@@ -1,0 +1,7 @@
+plugin:
+  enabled: "<green>ChadPluginBase has been enabled.</green>"
+  disabled: "<yellow>ChadPluginBase has been disabled.</yellow>"
+  disabled-by-config: "<yellow>ChadPluginBase is disabled because <white>enable</white> is set to <red>false</red> in config.yml.</yellow>"
+
+# Example for future modules:
+# welcome: "<green>Welcome, <yellow>{player}</yellow>!</green>"

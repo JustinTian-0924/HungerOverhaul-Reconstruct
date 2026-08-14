@@ -1,0 +1,6 @@
+# If set to false, the plugin will be disabled from running in the server
+enable: true
+
+# This file is read from plugins/ChadPluginBase/lang/.
+# current support language en_us.yml | zh_cn.yml
+lang: en_us.yml

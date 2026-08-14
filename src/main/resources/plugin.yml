@@ -1,0 +1,6 @@
+name: ChadPluginBase
+version: 0.0.1
+main: basementhost.randomchad.ChadPluginBase
+api-version: '26.2'
+description: Generic base plugin for future modification for all Random Chad's projects
+author: Random_Chad

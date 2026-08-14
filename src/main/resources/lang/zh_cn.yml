@@ -1,0 +1,7 @@
+plugin:
+  enabled: "<green>ChadPluginBase 已启用。</green>"
+  disabled: "<yellow>ChadPluginBase 已停用。</yellow>"
+  disabled-by-config: "<yellow>ChadPluginBase 已停用，因为 config.yml 中的 <white>enable</white> 被设为 <red>false</red>。</yellow>"
+
+# 为未来模块准备的示例：
+# welcome: "<green>欢迎，<yellow>{player}</yellow>！</green>"
