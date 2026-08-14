@@ -3,5 +3,17 @@ plugin:
   disabled: "<yellow>ChadPluginBase has been disabled.</yellow>"
   disabled-by-config: "<yellow>ChadPluginBase is disabled because <white>enable</white> is set to <red>false</red> in config.yml.</yellow>"
 
+command:
+  info:
+    header: "<gold><bold>{name}</bold></gold>"
+    version: "<gray>Version: <white>{version}</white></gray>"
+    author: "<gray>Author: <white>{author}</white></gray>"
+    language: "<gray>Language: <white>{language}</white></gray>"
+    status: "<gray>Status: <green>Enabled</green></gray>"
+    reload-hint: "<gray>Reload settings: <white>/{label} reload</white></gray>"
+  reload-success: "<green>ChadPluginBase settings and language files have been reloaded.</green>"
+  no-permission: "<red>You do not have permission to use this command.</red>"
+  usage: "<yellow>Usage: /{label} [reload]</yellow>"
+
 # Example for future modules:
 # welcome: "<green>Welcome, <yellow>{player}</yellow>!</green>"

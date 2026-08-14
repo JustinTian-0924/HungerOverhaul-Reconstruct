@@ -3,5 +3,17 @@ plugin:
   disabled: "<yellow>ChadPluginBase 已停用。</yellow>"
   disabled-by-config: "<yellow>ChadPluginBase 已停用，因为 config.yml 中的 <white>enable</white> 被设为 <red>false</red>。</yellow>"
 
+command:
+  info:
+    header: "<gold><bold>{name}</bold></gold>"
+    version: "<gray>版本：<white>{version}</white></gray>"
+    author: "<gray>作者：<white>{author}</white></gray>"
+    language: "<gray>语言：<white>{language}</white></gray>"
+    status: "<gray>状态：<green>已启用</green></gray>"
+    reload-hint: "<gray>重新加载设置：<white>/{label} reload</white></gray>"
+  reload-success: "<green>ChadPluginBase 的设置和语言文件已重新加载。</green>"
+  no-permission: "<red>你没有使用此指令的权限。</red>"
+  usage: "<yellow>用法：/{label} [reload]</yellow>"
+
 # 为未来模块准备的示例：
 # welcome: "<green>欢迎，<yellow>{player}</yellow>！</green>"

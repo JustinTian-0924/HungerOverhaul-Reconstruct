@@ -1,7 +1,11 @@
 package basementhost.randomchad;
 
+import basementhost.randomchad.command.ChadPluginBaseCommand;
 import basementhost.randomchad.lang.LanguageManager;
+import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
+
+import java.util.Objects;
 
 public final class ChadPluginBase extends JavaPlugin {
 	private LanguageManager languageManager;
@@ -15,6 +19,7 @@ public final class ChadPluginBase extends JavaPlugin {
 			return;
 		}
 
+		registerCommands();
 		getComponentLogger().info(languageManager.getMessage("plugin.enabled"));
 	}
 
@@ -27,6 +32,16 @@ public final class ChadPluginBase extends JavaPlugin {
 
 	public LanguageManager getLanguageManager() {
 		return languageManager;
+	}
+
+	private void registerCommands() {
+		PluginCommand pluginCommand = Objects.requireNonNull(
+				getCommand("chadpluginbase"),
+				"The chadpluginbase command is missing from plugin.yml"
+		);
+		ChadPluginBaseCommand commandHandler = new ChadPluginBaseCommand(this);
+		pluginCommand.setExecutor(commandHandler);
+		pluginCommand.setTabCompleter(commandHandler);
 	}
 
 	// Pending for furthur implementation

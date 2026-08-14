@@ -8,7 +8,6 @@ import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
 
-import java.awt.print.Paper;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.InvalidPathException;

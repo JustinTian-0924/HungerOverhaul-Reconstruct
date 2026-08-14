@@ -1,6 +1,14 @@
 name: ChadPluginBase
-version: 0.0.1
+version: 0.0.2
 main: basementhost.randomchad.ChadPluginBase
 api-version: '26.2'
 description: Generic base plugin for future modification for all Random Chad's projects
 author: Random_Chad
+commands:
+  chadpluginbase:
+    description: Shows ChadPluginBase information or reloads the plugin settings
+    aliases: [cpb]
+permissions:
+  chadpluginbase.admin:
+    description: Allows reloading ChadPluginBase settings
+    default: op
