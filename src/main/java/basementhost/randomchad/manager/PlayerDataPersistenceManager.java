@@ -37,6 +37,7 @@ public final class PlayerDataPersistenceManager {
 	private final ExecutorService storageExecutor;
 	private final Set<UUID> loadingPlayerIds = new HashSet<>();
 	private final Map<UUID, String> lastKnownNames = new HashMap<>();
+	private final Map<UUID, String> lastKnownGroupIds = new HashMap<>();
 	private final Map<UUID, Long> offlineSince = new HashMap<>();
 	private final Map<UUID, BukkitTask> unloadTasks = new HashMap<>();
 
@@ -95,7 +96,7 @@ public final class PlayerDataPersistenceManager {
 		}
 
 		UUID playerId = player.getUniqueId();
-		lastKnownNames.put(playerId, player.getName());
+		rememberPlayerIdentity(player);
 		cancelUnload(playerId);
 		offlineSince.remove(playerId);
 
@@ -115,10 +116,16 @@ public final class PlayerDataPersistenceManager {
 		Objects.requireNonNull(player, "player");
 		UUID playerId = player.getUniqueId();
 		long quitTime = System.currentTimeMillis();
-		lastKnownNames.put(playerId, player.getName());
+		playerDataManager.refreshGroupSettings(player);
+		rememberPlayerIdentity(player);
 
 		playerDataManager.findPlayerData(playerId).ifPresent(playerData ->
-				submitSave(playerId, createSnapshot(playerData, player.getName(), quitTime))
+				submitSave(playerId, createSnapshot(
+						playerData,
+						player.getName(),
+						lastKnownGroupIds.get(playerId),
+						quitTime
+				))
 		);
 
 		offlineSince.put(playerId, quitTime);
@@ -134,8 +141,14 @@ public final class PlayerDataPersistenceManager {
 		}
 
 		UUID playerId = player.getUniqueId();
-		lastKnownNames.put(playerId, player.getName());
-		submitSave(playerId, createSnapshot(playerData, player.getName(), System.currentTimeMillis()));
+		playerDataManager.refreshGroupSettings(player);
+		rememberPlayerIdentity(player);
+		submitSave(playerId, createSnapshot(
+				playerData,
+				player.getName(),
+				lastKnownGroupIds.get(playerId),
+				System.currentTimeMillis()
+		));
 		return true;
 	}
 
@@ -215,6 +228,7 @@ public final class PlayerDataPersistenceManager {
 		waitForStorageShutdown();
 		loadingPlayerIds.clear();
 		lastKnownNames.clear();
+		lastKnownGroupIds.clear();
 		offlineSince.clear();
 		playerDataManager.unloadAllPlayerData();
 	}
@@ -317,7 +331,7 @@ public final class PlayerDataPersistenceManager {
 				return;
 			}
 
-			lastKnownNames.put(playerId, player.getName());
+			rememberPlayerIdentity(player);
 			PlayerData playerData;
 			if (storedPlayerData == null) {
 				playerData = playerDataManager.getOrCreatePlayerData(player);
@@ -330,7 +344,12 @@ public final class PlayerDataPersistenceManager {
 			}
 
 			if (storedPlayerData == null) {
-				submitSave(playerId, createSnapshot(playerData, player.getName(), System.currentTimeMillis()));
+				submitSave(playerId, createSnapshot(
+						playerData,
+						player.getName(),
+						lastKnownGroupIds.get(playerId),
+						System.currentTimeMillis()
+				));
 			}
 		});
 	}
@@ -369,9 +388,17 @@ public final class PlayerDataPersistenceManager {
 		}
 	}
 
-	private StoredPlayerData createSnapshot(PlayerData playerData, String playerName, long lastSeen) {
+	private StoredPlayerData createSnapshot(
+			PlayerData playerData,
+			String playerName,
+			String groupId,
+			long lastSeen
+	) {
 		return new StoredPlayerData(
 				playerName,
+				Objects.requireNonNull(groupId, "groupId"),
+				playerData.getMaxNutrition(),
+				playerData.getMaxFullness(),
 				playerData.getNutrition(),
 				playerData.getFullness(),
 				playerData.isNutritionFrozen(),
@@ -388,18 +415,25 @@ public final class PlayerDataPersistenceManager {
 			UUID playerId = playerData.getPlayerId();
 			Player onlinePlayer = plugin.getServer().getPlayer(playerId);
 			String playerName;
+			String groupId;
 			long lastSeen;
 
 			if (onlinePlayer != null && onlinePlayer.isOnline()) {
+				playerDataManager.refreshGroupSettings(onlinePlayer);
 				playerName = onlinePlayer.getName();
-				lastKnownNames.put(playerId, playerName);
+				rememberPlayerIdentity(onlinePlayer);
+				groupId = lastKnownGroupIds.get(playerId);
 				lastSeen = currentTime;
 			} else {
 				playerName = lastKnownNames.getOrDefault(playerId, playerId.toString());
+				groupId = lastKnownGroupIds.getOrDefault(
+						playerId,
+						plugin.getGroupManager().getDefaultGroup().getId()
+				);
 				lastSeen = offlineSince.getOrDefault(playerId, currentTime);
 			}
 
-			snapshots.put(playerId, createSnapshot(playerData, playerName, lastSeen));
+			snapshots.put(playerId, createSnapshot(playerData, playerName, groupId, lastSeen));
 		}
 
 		return snapshots;
@@ -461,7 +495,14 @@ public final class PlayerDataPersistenceManager {
 
 		offlineSince.remove(playerId);
 		lastKnownNames.remove(playerId);
+		lastKnownGroupIds.remove(playerId);
 		playerDataManager.unloadPlayerData(playerId);
+	}
+
+	private void rememberPlayerIdentity(Player player) {
+		UUID playerId = player.getUniqueId();
+		lastKnownNames.put(playerId, player.getName());
+		lastKnownGroupIds.put(playerId, plugin.getGroupManager().getGroup(player).getId());
 	}
 
 	private void rescheduleOfflineUnloads() {

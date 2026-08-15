@@ -14,6 +14,7 @@ import basementhost.randomchad.data.StatusEffectsConfiguration;
 import basementhost.randomchad.data.StoredPlayerData;
 import basementhost.randomchad.data.WorldChangeLifecycleSettings;
 import basementhost.randomchad.lang.LanguageManager;
+import basementhost.randomchad.manager.GroupManager;
 import basementhost.randomchad.manager.HealthRegenerationManager;
 import basementhost.randomchad.storage.ReadOnlyPlayerDataQueryResult;
 import org.bukkit.OfflinePlayer;
@@ -300,12 +301,21 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 		}
 
 		StoredPlayerData storedData = result.getPlayerData().orElseThrow();
-		GroupSettings defaultSettings = plugin.getGroupManager().getDefaultGroup().getSettings();
+		GroupManager.Group defaultGroup = plugin.getGroupManager().getDefaultGroup();
+		GroupSettings defaultSettings = defaultGroup.getSettings();
+		boolean hasGroupSnapshot = storedData.hasGroupSnapshot();
+		String groupId = storedData.getLastKnownGroupId().orElse(defaultGroup.getId());
+		double maxNutrition = storedData.getMaxNutrition().orElse(defaultSettings.getMaxNutrition());
+		double maxFullness = storedData.getMaxFullness().orElse(defaultSettings.getMaxFullness());
+		GroupManager.Group configuredGroup = plugin.getGroupManager().findGroup(groupId).orElse(null);
+		GroupSettings detailGroupSettings = configuredGroup == null
+				? defaultSettings
+				: configuredGroup.getSettings();
 		StatusValues values = new StatusValues(
 				storedData.getNutrition(),
-				defaultSettings.getMaxNutrition(),
+				maxNutrition,
 				storedData.getFullness(),
-				defaultSettings.getMaxFullness(),
+				maxFullness,
 				storedData.isNutritionFrozen(),
 				storedData.isFullnessFrozen()
 		);
@@ -313,11 +323,21 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 		sendBaseStatus(
 				sender,
 				storedData.getLastKnownName(),
-				plugin.getGroupManager().getDefaultGroup().getId(),
+				groupId,
 				values,
 				languageManager
 		);
-		sender.sendMessage(languageManager.getMessage("command.status.offline-default-fallback"));
+		if (hasGroupSnapshot) {
+			sender.sendMessage(languageManager.getMessage("command.status.offline-group-snapshot"));
+			if (configuredGroup == null) {
+				sender.sendMessage(languageManager.getMessage(
+						"command.status.offline-group-missing-fallback",
+						Map.of("group", groupId)
+				));
+			}
+		} else {
+			sender.sendMessage(languageManager.getMessage("command.status.offline-default-fallback"));
+		}
 		sender.sendMessage(languageManager.getMessage(
 				"command.status.offline-last-seen",
 				Map.of("timestamp", formatLastSeen(storedData.getLastSeen()))
@@ -326,7 +346,7 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 		if (viewMode == StatusViewMode.DETAIL) {
 			sender.sendMessage(languageManager.getMessage("command.status.offline-detail-note"));
 			sendDetailedEffects(sender, values, languageManager);
-			sendOfflineHealthRegeneration(sender, values, defaultSettings, languageManager);
+			sendOfflineHealthRegeneration(sender, values, detailGroupSettings, languageManager);
 			sender.sendMessage(languageManager.getMessage("command.status.eating-header"));
 			sender.sendMessage(languageManager.getMessage("command.status.offline-eating-unavailable"));
 			sendDetailedLifecycle(sender, languageManager);

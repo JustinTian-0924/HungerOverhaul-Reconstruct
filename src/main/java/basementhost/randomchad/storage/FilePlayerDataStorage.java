@@ -19,7 +19,8 @@ import java.util.stream.Stream;
 
 // Stores each player in data/<uuid>.yml using UTF-8 and atomic replacement when supported.
 public final class FilePlayerDataStorage implements PlayerDataStorage {
-	private static final int SCHEMA_VERSION = 1;
+	private static final int LEGACY_SCHEMA_VERSION = 1;
+	private static final int SCHEMA_VERSION = 2;
 
 	private final Path dataDirectory;
 
@@ -109,6 +110,9 @@ public final class FilePlayerDataStorage implements PlayerDataStorage {
 	@Override
 	public void save(UUID playerId, StoredPlayerData playerData) throws PlayerDataStorageException {
 		Objects.requireNonNull(playerData, "playerData");
+		if (!playerData.hasGroupSnapshot()) {
+			throw new PlayerDataStorageException("Schema-version 2 saves require a complete group snapshot");
+		}
 		ensureDataDirectory();
 		Path playerFile = getPlayerFile(playerId);
 		Path temporaryFile = dataDirectory.resolve(playerId + ".yml.tmp");
@@ -116,6 +120,9 @@ public final class FilePlayerDataStorage implements PlayerDataStorage {
 		YamlConfiguration configuration = new YamlConfiguration();
 		configuration.set("schema-version", SCHEMA_VERSION);
 		configuration.set("last-known-name", playerData.getLastKnownName());
+		configuration.set("last-known-group", playerData.getLastKnownGroupId().orElseThrow());
+		configuration.set("max-nutrition", playerData.getMaxNutrition().orElseThrow());
+		configuration.set("max-fullness", playerData.getMaxFullness().orElseThrow());
 		configuration.set("nutrition", playerData.getNutrition());
 		configuration.set("fullness", playerData.getFullness());
 		configuration.set("nutrition-frozen", playerData.isNutritionFrozen());
@@ -140,18 +147,28 @@ public final class FilePlayerDataStorage implements PlayerDataStorage {
 
 	private StoredPlayerData readStoredPlayerData(YamlConfiguration configuration) {
 		int schemaVersion = readInteger(configuration, "schema-version");
-		if (schemaVersion != SCHEMA_VERSION) {
-			throw new IllegalArgumentException("Unsupported schema-version: " + schemaVersion);
-		}
-
-		return new StoredPlayerData(
-				readText(configuration, "last-known-name"),
-				readDouble(configuration, "nutrition"),
-				readDouble(configuration, "fullness"),
-				readBoolean(configuration, "nutrition-frozen"),
-				readBoolean(configuration, "fullness-frozen"),
-				readLong(configuration, "last-seen")
-		);
+		return switch (schemaVersion) {
+			case LEGACY_SCHEMA_VERSION -> new StoredPlayerData(
+					readText(configuration, "last-known-name"),
+					readDouble(configuration, "nutrition"),
+					readDouble(configuration, "fullness"),
+					readBoolean(configuration, "nutrition-frozen"),
+					readBoolean(configuration, "fullness-frozen"),
+					readLong(configuration, "last-seen")
+			);
+			case SCHEMA_VERSION -> new StoredPlayerData(
+					readText(configuration, "last-known-name"),
+					readText(configuration, "last-known-group"),
+					readDouble(configuration, "max-nutrition"),
+					readDouble(configuration, "max-fullness"),
+					readDouble(configuration, "nutrition"),
+					readDouble(configuration, "fullness"),
+					readBoolean(configuration, "nutrition-frozen"),
+					readBoolean(configuration, "fullness-frozen"),
+					readLong(configuration, "last-seen")
+			);
+			default -> throw new IllegalArgumentException("Unsupported schema-version: " + schemaVersion);
+		};
 	}
 
 	private String readText(YamlConfiguration configuration, String path) {

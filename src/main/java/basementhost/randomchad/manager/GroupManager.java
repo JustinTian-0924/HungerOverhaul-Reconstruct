@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -98,6 +99,11 @@ public final class GroupManager {
 		return groupsById.values().stream()
 				.sorted(Comparator.comparing(Group::getId))
 				.toList();
+	}
+
+	public Optional<Group> findGroup(String groupId) {
+		requireLoaded();
+		return Optional.ofNullable(groupsById.get(Objects.requireNonNull(groupId, "groupId")));
 	}
 
 	private File prepareGroupFile() {
