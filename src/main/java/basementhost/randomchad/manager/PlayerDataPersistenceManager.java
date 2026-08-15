@@ -7,6 +7,7 @@ import basementhost.randomchad.data.StoredPlayerData;
 import basementhost.randomchad.storage.CorruptPlayerDataException;
 import basementhost.randomchad.storage.PlayerDataStorage;
 import basementhost.randomchad.storage.PlayerDataStorageException;
+import basementhost.randomchad.storage.ReadOnlyPlayerDataQueryResult;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
 
@@ -22,6 +23,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 
 // Coordinates asynchronous file access, autosaves, and offline memory expiration.
@@ -151,6 +153,50 @@ public final class PlayerDataPersistenceManager {
 		return loadingPlayerIds.contains(Objects.requireNonNull(playerId, "playerId"));
 	}
 
+	// Queries an existing file on the storage thread and never loads it into the live cache.
+	public void queryPlayerDataReadOnly(
+			UUID playerId,
+			Consumer<ReadOnlyPlayerDataQueryResult> resultHandler
+	) {
+		Objects.requireNonNull(playerId, "playerId");
+		Objects.requireNonNull(resultHandler, "resultHandler");
+		if (stopping) {
+			resultHandler.accept(ReadOnlyPlayerDataQueryResult.of(
+					ReadOnlyPlayerDataQueryResult.Status.UNAVAILABLE
+			));
+			return;
+		}
+
+		boolean queued = submitStorageTask(() -> queryPlayerDataFileReadOnly(playerId, resultHandler));
+		if (!queued) {
+			resultHandler.accept(ReadOnlyPlayerDataQueryResult.of(
+					ReadOnlyPlayerDataQueryResult.Status.UNAVAILABLE
+			));
+		}
+	}
+
+	// Uses the saved last-known name when Paper no longer has the player in its fast profile cache.
+	public void queryPlayerDataReadOnly(
+			String playerName,
+			Consumer<ReadOnlyPlayerDataQueryResult> resultHandler
+	) {
+		Objects.requireNonNull(playerName, "playerName");
+		Objects.requireNonNull(resultHandler, "resultHandler");
+		if (stopping) {
+			resultHandler.accept(ReadOnlyPlayerDataQueryResult.of(
+					ReadOnlyPlayerDataQueryResult.Status.UNAVAILABLE
+			));
+			return;
+		}
+
+		boolean queued = submitStorageTask(() -> queryPlayerDataFileReadOnly(playerName, resultHandler));
+		if (!queued) {
+			resultHandler.accept(ReadOnlyPlayerDataQueryResult.of(
+					ReadOnlyPlayerDataQueryResult.Status.UNAVAILABLE
+			));
+		}
+	}
+
 	public void shutdown() {
 		if (stopping) {
 			return;
@@ -188,6 +234,75 @@ public final class PlayerDataPersistenceManager {
 			plugin.getLogger().log(Level.SEVERE, "Could not load player data for " + playerId + ".", exception);
 			scheduleLoadFailure(playerId);
 		}
+	}
+
+	private void queryPlayerDataFileReadOnly(
+			UUID playerId,
+			Consumer<ReadOnlyPlayerDataQueryResult> resultHandler
+	) {
+		ReadOnlyPlayerDataQueryResult result;
+		try {
+			Optional<StoredPlayerData> storedPlayerData = storage.loadReadOnly(playerId);
+			result = storedPlayerData
+					.map(playerData -> ReadOnlyPlayerDataQueryResult.found(playerId, playerData))
+					.orElseGet(() -> ReadOnlyPlayerDataQueryResult.of(
+							ReadOnlyPlayerDataQueryResult.Status.NOT_FOUND
+					));
+		} catch (CorruptPlayerDataException exception) {
+			plugin.getLogger().log(
+					Level.WARNING,
+					"Read-only query found corrupt player data for " + playerId + ". The file was not changed.",
+					exception
+			);
+			result = ReadOnlyPlayerDataQueryResult.of(ReadOnlyPlayerDataQueryResult.Status.CORRUPT);
+		} catch (PlayerDataStorageException exception) {
+			plugin.getLogger().log(
+					Level.WARNING,
+					"Could not complete read-only player data query for " + playerId + ".",
+					exception
+			);
+			result = ReadOnlyPlayerDataQueryResult.of(ReadOnlyPlayerDataQueryResult.Status.FAILED);
+		}
+
+		ReadOnlyPlayerDataQueryResult completedResult = result;
+		runOnServerThread(() -> resultHandler.accept(completedResult));
+	}
+
+	private void queryPlayerDataFileReadOnly(
+			String playerName,
+			Consumer<ReadOnlyPlayerDataQueryResult> resultHandler
+	) {
+		ReadOnlyPlayerDataQueryResult result;
+		try {
+			Optional<UUID> playerId = storage.findPlayerIdByNameReadOnly(playerName);
+			if (playerId.isEmpty()) {
+				result = ReadOnlyPlayerDataQueryResult.of(ReadOnlyPlayerDataQueryResult.Status.NOT_FOUND);
+			} else {
+				Optional<StoredPlayerData> storedPlayerData = storage.loadReadOnly(playerId.get());
+				result = storedPlayerData
+						.map(playerData -> ReadOnlyPlayerDataQueryResult.found(playerId.get(), playerData))
+						.orElseGet(() -> ReadOnlyPlayerDataQueryResult.of(
+								ReadOnlyPlayerDataQueryResult.Status.NOT_FOUND
+						));
+			}
+		} catch (CorruptPlayerDataException exception) {
+			plugin.getLogger().log(
+					Level.WARNING,
+					"Read-only query found corrupt player data for " + playerName + ". The file was not changed.",
+					exception
+			);
+			result = ReadOnlyPlayerDataQueryResult.of(ReadOnlyPlayerDataQueryResult.Status.CORRUPT);
+		} catch (PlayerDataStorageException exception) {
+			plugin.getLogger().log(
+					Level.WARNING,
+					"Could not complete read-only player data query for " + playerName + ".",
+					exception
+			);
+			result = ReadOnlyPlayerDataQueryResult.of(ReadOnlyPlayerDataQueryResult.Status.FAILED);
+		}
+
+		ReadOnlyPlayerDataQueryResult completedResult = result;
+		runOnServerThread(() -> resultHandler.accept(completedResult));
 	}
 
 	private void scheduleLoadedDataApplication(
@@ -374,11 +489,13 @@ public final class PlayerDataPersistenceManager {
 		unloadTasks.clear();
 	}
 
-	private void submitStorageTask(Runnable storageTask) {
+	private boolean submitStorageTask(Runnable storageTask) {
 		try {
 			storageExecutor.execute(storageTask);
+			return true;
 		} catch (RejectedExecutionException exception) {
 			plugin.getLogger().log(Level.SEVERE, "Could not queue a player data storage task.", exception);
+			return false;
 		}
 	}
 

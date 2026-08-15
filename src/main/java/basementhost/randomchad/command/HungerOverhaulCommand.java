@@ -3,6 +3,7 @@ package basementhost.randomchad.command;
 import basementhost.randomchad.HungerOverhaul;
 import basementhost.randomchad.data.DeathLifecycleSettings;
 import basementhost.randomchad.data.EatingStatusSnapshot;
+import basementhost.randomchad.data.GroupSettings;
 import basementhost.randomchad.data.HealthRegenerationGroupSettings;
 import basementhost.randomchad.data.LifecycleValueRule;
 import basementhost.randomchad.data.PlayerData;
@@ -10,23 +11,33 @@ import basementhost.randomchad.data.PlayerLifecycleSettings;
 import basementhost.randomchad.data.RespawnLifecycleSettings;
 import basementhost.randomchad.data.StatusEffectDefinition;
 import basementhost.randomchad.data.StatusEffectsConfiguration;
+import basementhost.randomchad.data.StoredPlayerData;
 import basementhost.randomchad.data.WorldChangeLifecycleSettings;
 import basementhost.randomchad.lang.LanguageManager;
 import basementhost.randomchad.manager.HealthRegenerationManager;
+import basementhost.randomchad.storage.ReadOnlyPlayerDataQueryResult;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 
 public final class HungerOverhaulCommand implements CommandExecutor, TabCompleter {
 	private static final String RELOAD_PERMISSION = "hungeroverhaul.reload";
 	private static final String STATUS_OTHERS_PERMISSION = "hungeroverhaul.status.others";
+	private static final DateTimeFormatter LAST_SEEN_FORMAT = DateTimeFormatter
+			.ofPattern("yyyy-MM-dd HH:mm:ss z")
+			.withZone(ZoneId.systemDefault());
 
 	private final HungerOverhaul plugin;
 	private final HungerAdminCommand adminCommand;
@@ -153,31 +164,71 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 
 	private void sendPlayerStatus(CommandSender sender, StatusRequest statusRequest) {
 		LanguageManager languageManager = plugin.getLanguageManager();
-		Player targetPlayer;
 		if (statusRequest.targetName() == null) {
 			if (!(sender instanceof Player player)) {
 				sender.sendMessage(languageManager.getMessage("command.status.player-only"));
 				return;
 			}
-			targetPlayer = player;
-		} else {
-			if (!sender.hasPermission(STATUS_OTHERS_PERMISSION)) {
-				sender.sendMessage(languageManager.getMessage("command.status.no-permission-others"));
-				return;
-			}
-
-			targetPlayer = findOnlinePlayer(statusRequest.targetName());
-			if (targetPlayer == null) {
-				sender.sendMessage(languageManager.getMessage(
-						"command.status.player-not-found",
-						Map.of("player", statusRequest.targetName())
-				));
-				return;
-			}
+			sendOnlinePlayerStatus(sender, player, statusRequest.viewMode(), true);
+			return;
 		}
 
+		if (!sender.hasPermission(STATUS_OTHERS_PERMISSION)) {
+			sender.sendMessage(languageManager.getMessage("command.status.no-permission-others"));
+			return;
+		}
+
+		Player onlinePlayer = findOnlinePlayer(statusRequest.targetName());
+		if (onlinePlayer != null) {
+			sendOnlinePlayerStatus(sender, onlinePlayer, statusRequest.viewMode(), false);
+			return;
+		}
+
+		OfflinePlayer offlinePlayer = findKnownOfflinePlayer(statusRequest.targetName());
+		String displayedName = offlinePlayer == null
+				? statusRequest.targetName()
+				: getOfflinePlayerName(offlinePlayer, statusRequest.targetName());
+		sender.sendMessage(languageManager.getMessage(
+				"command.status.offline-loading",
+				Map.of("player", displayedName)
+		));
+		if (offlinePlayer != null) {
+			UUID playerId = offlinePlayer.getUniqueId();
+			plugin.getPersistenceManager().queryPlayerDataReadOnly(
+					playerId,
+					result -> finishOfflinePlayerStatusQuery(
+							sender,
+							playerId,
+							displayedName,
+							statusRequest.viewMode(),
+							result
+					)
+			);
+			return;
+		}
+
+		plugin.getPersistenceManager().queryPlayerDataReadOnly(
+				statusRequest.targetName(),
+				result -> finishOfflinePlayerStatusQuery(
+						sender,
+						null,
+						displayedName,
+						statusRequest.viewMode(),
+						result
+				)
+		);
+	}
+
+	private void sendOnlinePlayerStatus(
+			CommandSender sender,
+			Player targetPlayer,
+			StatusViewMode viewMode,
+			boolean selfQuery
+	) {
+		LanguageManager languageManager = plugin.getLanguageManager();
+
 		if (plugin.getPersistenceManager().isPlayerDataLoading(targetPlayer.getUniqueId())) {
-			String messageKey = statusRequest.targetName() == null
+			String messageKey = selfQuery
 					? "command.status.loading"
 					: "command.status.other-loading";
 			sender.sendMessage(languageManager.getMessage(
@@ -191,7 +242,7 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 				.findPlayerData(targetPlayer)
 				.orElse(null);
 		if (playerData == null) {
-			String messageKey = statusRequest.targetName() == null
+			String messageKey = selfQuery
 					? "command.status.unavailable"
 					: "command.status.other-unavailable";
 			sender.sendMessage(languageManager.getMessage(
@@ -203,54 +254,131 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 
 		plugin.getPlayerDataManager().refreshGroupSettings(targetPlayer);
 		String groupId = plugin.getGroupManager().getGroup(targetPlayer).getId();
+		StatusValues values = StatusValues.from(playerData);
+		sendBaseStatus(sender, targetPlayer.getName(), groupId, values, languageManager);
 
-		sender.sendMessage(languageManager.getMessage(
-				"command.status.header",
-				Map.of("player", targetPlayer.getName())
-		));
-		sender.sendMessage(languageManager.getMessage(
-				"command.status.group",
-				Map.of("group", groupId)
-		));
-		sender.sendMessage(languageManager.getMessage(
-				"command.status.nutrition",
-				Map.of(
-						"current", formatValue(playerData.getNutrition()),
-						"maximum", formatValue(playerData.getMaxNutrition()),
-						"percentage", formatPercentage(playerData.getNutritionPercentage())
-				)
-		));
-		sender.sendMessage(languageManager.getMessage(
-				"command.status.fullness",
-				Map.of(
-						"current", formatValue(playerData.getFullness()),
-						"maximum", formatValue(playerData.getMaxFullness()),
-						"percentage", formatPercentage(playerData.getFullnessPercentage())
-				)
-		));
-		sender.sendMessage(languageManager.getMessage(
-				playerData.isNutritionFrozen()
-						? "command.status.nutrition-frozen"
-						: "command.status.nutrition-active"
-		));
-		sender.sendMessage(languageManager.getMessage(
-				playerData.isFullnessFrozen()
-						? "command.status.fullness-frozen"
-						: "command.status.fullness-active"
-		));
-
-		if (statusRequest.viewMode() == StatusViewMode.DETAIL) {
-			sendDetailedEffects(sender, targetPlayer, playerData, languageManager);
+		if (viewMode == StatusViewMode.DETAIL) {
+			sendDetailedEffects(sender, values, languageManager);
 			sendDetailedHealthRegeneration(sender, targetPlayer, playerData, languageManager);
 			sendDetailedEating(sender, targetPlayer, languageManager);
 			sendDetailedLifecycle(sender, languageManager);
 		}
 	}
 
+	private void finishOfflinePlayerStatusQuery(
+			CommandSender sender,
+			UUID knownPlayerId,
+			String requestedName,
+			StatusViewMode viewMode,
+			ReadOnlyPlayerDataQueryResult result
+	) {
+		if (!isRecipientAvailable(sender)) {
+			return;
+		}
+
+		UUID resolvedPlayerId = result.getPlayerId().orElse(knownPlayerId);
+		if (resolvedPlayerId != null) {
+			Player nowOnline = plugin.getServer().getPlayer(resolvedPlayerId);
+			if (nowOnline != null && nowOnline.isOnline()) {
+				sendOnlinePlayerStatus(sender, nowOnline, viewMode, false);
+				return;
+			}
+		}
+
+		LanguageManager languageManager = plugin.getLanguageManager();
+		if (result.getStatus() != ReadOnlyPlayerDataQueryResult.Status.FOUND) {
+			String messageKey = switch (result.getStatus()) {
+				case NOT_FOUND -> knownPlayerId == null
+						? "command.status.player-not-found"
+						: "command.status.offline-data-not-found";
+				case CORRUPT -> "command.status.offline-data-corrupt";
+				case FAILED, UNAVAILABLE -> "command.status.offline-query-failed";
+				case FOUND -> throw new IllegalStateException("FOUND result has no player data");
+			};
+			sender.sendMessage(languageManager.getMessage(messageKey, Map.of("player", requestedName)));
+			return;
+		}
+
+		StoredPlayerData storedData = result.getPlayerData().orElseThrow();
+		GroupSettings defaultSettings = plugin.getGroupManager().getDefaultGroup().getSettings();
+		StatusValues values = new StatusValues(
+				storedData.getNutrition(),
+				defaultSettings.getMaxNutrition(),
+				storedData.getFullness(),
+				defaultSettings.getMaxFullness(),
+				storedData.isNutritionFrozen(),
+				storedData.isFullnessFrozen()
+		);
+
+		sendBaseStatus(
+				sender,
+				storedData.getLastKnownName(),
+				plugin.getGroupManager().getDefaultGroup().getId(),
+				values,
+				languageManager
+		);
+		sender.sendMessage(languageManager.getMessage("command.status.offline-default-fallback"));
+		sender.sendMessage(languageManager.getMessage(
+				"command.status.offline-last-seen",
+				Map.of("timestamp", formatLastSeen(storedData.getLastSeen()))
+		));
+
+		if (viewMode == StatusViewMode.DETAIL) {
+			sender.sendMessage(languageManager.getMessage("command.status.offline-detail-note"));
+			sendDetailedEffects(sender, values, languageManager);
+			sendOfflineHealthRegeneration(sender, values, defaultSettings, languageManager);
+			sender.sendMessage(languageManager.getMessage("command.status.eating-header"));
+			sender.sendMessage(languageManager.getMessage("command.status.offline-eating-unavailable"));
+			sendDetailedLifecycle(sender, languageManager);
+		}
+	}
+
+	private void sendBaseStatus(
+			CommandSender recipient,
+			String playerName,
+			String groupId,
+			StatusValues values,
+			LanguageManager languageManager
+	) {
+		recipient.sendMessage(languageManager.getMessage(
+				"command.status.header",
+				Map.of("player", playerName)
+		));
+		recipient.sendMessage(languageManager.getMessage(
+				"command.status.group",
+				Map.of("group", groupId)
+		));
+		recipient.sendMessage(languageManager.getMessage(
+				"command.status.nutrition",
+				Map.of(
+						"current", formatValue(values.nutrition()),
+						"maximum", formatValue(values.maxNutrition()),
+						"percentage", formatPercentage(values.nutritionPercentage())
+				)
+		));
+		recipient.sendMessage(languageManager.getMessage(
+				"command.status.fullness",
+				Map.of(
+						"current", formatValue(values.fullness()),
+						"maximum", formatValue(values.maxFullness()),
+						"percentage", formatPercentage(values.fullnessPercentage())
+				)
+		));
+		recipient.sendMessage(languageManager.getMessage(
+				values.nutritionFrozen()
+						? "command.status.nutrition-frozen"
+						: "command.status.nutrition-active"
+		));
+		recipient.sendMessage(languageManager.getMessage(
+				values.fullnessFrozen()
+						? "command.status.fullness-frozen"
+						: "command.status.fullness-active"
+		));
+	}
+
 	private void sendDetailedEffects(
 			CommandSender recipient,
-			Player player,
-			PlayerData playerData,
+			StatusValues values,
 			LanguageManager languageManager
 	) {
 		StatusEffectsConfiguration configuration = plugin.getStatusEffectManager().getConfiguration();
@@ -260,10 +388,10 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 		}
 
 		StatusEffectDefinition nutritionEffect = configuration.findNutritionEffect(
-				playerData.getNutritionPercentage()
+				values.effectiveNutritionPercentage()
 		);
 		StatusEffectDefinition fullnessEffect = configuration.findFullnessEffect(
-				playerData.getFullnessPercentage()
+				values.effectiveFullnessPercentage()
 		);
 		recipient.sendMessage(languageManager.getMessage(
 				"command.status.nutrition-effect",
@@ -344,6 +472,66 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 						)
 				)
 		));
+	}
+
+	private void sendOfflineHealthRegeneration(
+			CommandSender recipient,
+			StatusValues values,
+			GroupSettings defaultSettings,
+			LanguageManager languageManager
+	) {
+		HealthRegenerationManager regenerationManager = plugin.getHealthRegenerationManager();
+		if (!regenerationManager.isEnabled()) {
+			recipient.sendMessage(languageManager.getMessage("command.status.health-regeneration-disabled"));
+			return;
+		}
+
+		HealthRegenerationGroupSettings regenerationSettings = defaultSettings.getHealthRegenerationSettings();
+		double multiplier = getOfflineRegenerationMultiplier(values);
+		double adjustedHeal = regenerationSettings.getHealHpPerCycle() * multiplier;
+		if (!Double.isFinite(adjustedHeal)) {
+			adjustedHeal = Double.MAX_VALUE;
+		}
+
+		recipient.sendMessage(languageManager.getMessage(
+				"command.status.health-regeneration",
+				Map.of(
+						"base", formatValue(regenerationSettings.getHealHpPerCycle()),
+						"adjusted", formatValue(adjustedHeal),
+						"multiplier", formatMultiplier(multiplier),
+						"interval", regenerationManager.getSettings().getIntervalTicks()
+				)
+		));
+		recipient.sendMessage(languageManager.getMessage(
+				"command.status.health-regeneration-cost",
+				Map.of(
+						"nutrition", formatValue(regenerationSettings.getNutritionCost()),
+						"fullness", formatValue(regenerationSettings.getFullnessCost()),
+						"threshold", formatValue(
+								regenerationManager.getSettings().getMinimumChargedHealHp()
+						)
+				)
+		));
+	}
+
+	private double getOfflineRegenerationMultiplier(StatusValues values) {
+		StatusEffectsConfiguration configuration = plugin.getStatusEffectManager().getConfiguration();
+		if (!configuration.isEnabled()) {
+			return 1.0;
+		}
+
+		StatusEffectDefinition nutritionEffect = configuration.findNutritionEffect(
+				values.effectiveNutritionPercentage()
+		);
+		StatusEffectDefinition fullnessEffect = configuration.findFullnessEffect(
+				values.effectiveFullnessPercentage()
+		);
+		return Math.max(
+				0.0,
+				1.0
+						+ nutritionEffect.getHealthRegenerationModifier()
+						+ fullnessEffect.getHealthRegenerationModifier()
+		);
 	}
 
 	private void sendDetailedEating(
@@ -528,6 +716,27 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 				.orElse(null);
 	}
 
+	private OfflinePlayer findKnownOfflinePlayer(String playerName) {
+		OfflinePlayer offlinePlayer = plugin.getServer().getOfflinePlayerIfCached(playerName);
+		if (offlinePlayer == null) {
+			return null;
+		}
+
+		String knownName = offlinePlayer.getName();
+		return knownName != null && knownName.equalsIgnoreCase(playerName)
+				? offlinePlayer
+				: null;
+	}
+
+	private String getOfflinePlayerName(OfflinePlayer offlinePlayer, String fallback) {
+		String playerName = offlinePlayer.getName();
+		return playerName == null || playerName.isBlank() ? fallback : playerName;
+	}
+
+	private boolean isRecipientAvailable(CommandSender recipient) {
+		return !(recipient instanceof Player player) || player.isOnline();
+	}
+
 	private String getEffectName(
 			LanguageManager languageManager,
 			String valueType,
@@ -559,6 +768,10 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 		return String.format(Locale.ROOT, "%.1f", ticks / 20.0);
 	}
 
+	private String formatLastSeen(long lastSeen) {
+		return LAST_SEEN_FORMAT.format(Instant.ofEpochMilli(lastSeen));
+	}
+
 	private List<String> matchingSuggestions(List<String> options, String input) {
 		String typedText = input.toLowerCase(Locale.ROOT);
 		return options.stream()
@@ -586,5 +799,41 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 	}
 
 	private record StatusRequest(String targetName, StatusViewMode viewMode) {
+	}
+
+	private record StatusValues(
+			double nutrition,
+			double maxNutrition,
+			double fullness,
+			double maxFullness,
+			boolean nutritionFrozen,
+			boolean fullnessFrozen
+	) {
+		private static StatusValues from(PlayerData playerData) {
+			return new StatusValues(
+					playerData.getNutrition(),
+					playerData.getMaxNutrition(),
+					playerData.getFullness(),
+					playerData.getMaxFullness(),
+					playerData.isNutritionFrozen(),
+					playerData.isFullnessFrozen()
+			);
+		}
+
+		private double nutritionPercentage() {
+			return nutrition / maxNutrition * 100.0;
+		}
+
+		private double fullnessPercentage() {
+			return fullness / maxFullness * 100.0;
+		}
+
+		private double effectiveNutritionPercentage() {
+			return Math.max(0.0, Math.min(nutritionPercentage(), 100.0));
+		}
+
+		private double effectiveFullnessPercentage() {
+			return Math.max(0.0, Math.min(fullnessPercentage(), 100.0));
+		}
 	}
 }

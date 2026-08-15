@@ -15,6 +15,7 @@ import java.nio.file.StandardOpenOption;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 // Stores each player in data/<uuid>.yml using UTF-8 and atomic replacement when supported.
 public final class FilePlayerDataStorage implements PlayerDataStorage {
@@ -29,6 +30,57 @@ public final class FilePlayerDataStorage implements PlayerDataStorage {
 	@Override
 	public Optional<StoredPlayerData> load(UUID playerId) throws PlayerDataStorageException {
 		ensureDataDirectory();
+		return readPlayerFile(playerId);
+	}
+
+	@Override
+	public Optional<StoredPlayerData> loadReadOnly(UUID playerId) throws PlayerDataStorageException {
+		if (!prepareReadOnlyDirectory()) {
+			return Optional.empty();
+		}
+		return readPlayerFile(Objects.requireNonNull(playerId, "playerId"));
+	}
+
+	@Override
+	public Optional<UUID> findPlayerIdByNameReadOnly(String playerName) throws PlayerDataStorageException {
+		String searchedName = Objects.requireNonNull(playerName, "playerName").trim();
+		if (searchedName.isEmpty() || !prepareReadOnlyDirectory()) {
+			return Optional.empty();
+		}
+
+		PlayerFileMatch newestMatch = null;
+		try (Stream<Path> files = Files.list(dataDirectory)) {
+			for (Path path : files.filter(Files::isRegularFile).toList()) {
+				UUID playerId = readPlayerId(path);
+				if (playerId == null) {
+					continue;
+				}
+
+				try {
+					StoredPlayerData playerData = readPlayerFile(playerId).orElse(null);
+					if (playerData == null
+							|| !playerData.getLastKnownName().equalsIgnoreCase(searchedName)) {
+						continue;
+					}
+
+					if (newestMatch == null || playerData.getLastSeen() > newestMatch.lastSeen()) {
+						newestMatch = new PlayerFileMatch(playerId, playerData.getLastSeen());
+					}
+				} catch (PlayerDataStorageException ignored) {
+					// An unrelated unreadable file must not prevent querying other offline players.
+				}
+			}
+		} catch (IOException exception) {
+			throw new PlayerDataStorageException(
+					"Could not list player data files in " + dataDirectory,
+					exception
+			);
+		}
+
+		return newestMatch == null ? Optional.empty() : Optional.of(newestMatch.playerId());
+	}
+
+	private Optional<StoredPlayerData> readPlayerFile(UUID playerId) throws PlayerDataStorageException {
 		Path playerFile = getPlayerFile(playerId);
 		if (Files.notExists(playerFile)) {
 			return Optional.empty();
@@ -186,6 +238,17 @@ public final class FilePlayerDataStorage implements PlayerDataStorage {
 		}
 	}
 
+	private boolean prepareReadOnlyDirectory() throws PlayerDataStorageException {
+		if (Files.notExists(dataDirectory)) {
+			return false;
+		}
+
+		if (!Files.isDirectory(dataDirectory)) {
+			throw new PlayerDataStorageException("Player data path is not a directory: " + dataDirectory);
+		}
+		return true;
+	}
+
 	private void tryDeleteTemporaryFile(Path temporaryFile) {
 		try {
 			Files.deleteIfExists(temporaryFile);
@@ -196,5 +259,21 @@ public final class FilePlayerDataStorage implements PlayerDataStorage {
 
 	private Path getPlayerFile(UUID playerId) {
 		return dataDirectory.resolve(Objects.requireNonNull(playerId, "playerId") + ".yml");
+	}
+
+	private UUID readPlayerId(Path playerFile) {
+		String fileName = playerFile.getFileName().toString();
+		if (!fileName.endsWith(".yml")) {
+			return null;
+		}
+
+		try {
+			return UUID.fromString(fileName.substring(0, fileName.length() - ".yml".length()));
+		} catch (IllegalArgumentException exception) {
+			return null;
+		}
+	}
+
+	private record PlayerFileMatch(UUID playerId, long lastSeen) {
 	}
 }
