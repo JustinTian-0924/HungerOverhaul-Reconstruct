@@ -26,6 +26,7 @@ import java.util.Map;
 
 public final class HungerOverhaulCommand implements CommandExecutor, TabCompleter {
 	private static final String RELOAD_PERMISSION = "hungeroverhaul.reload";
+	private static final String STATUS_OTHERS_PERMISSION = "hungeroverhaul.status.others";
 
 	private final HungerOverhaul plugin;
 	private final HungerAdminCommand adminCommand;
@@ -48,8 +49,8 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 		}
 
 		if (args.length >= 1 && args[0].equalsIgnoreCase("status")) {
-			StatusViewMode viewMode = readStatusViewMode(args);
-			if (viewMode == null) {
+			StatusRequest statusRequest = readStatusRequest(args);
+			if (statusRequest == null) {
 				sender.sendMessage(plugin.getLanguageManager().getMessage(
 						"command.status.usage",
 						Map.of("label", label)
@@ -57,7 +58,7 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 				return true;
 			}
 
-			sendPlayerStatus(sender, viewMode);
+			sendPlayerStatus(sender, statusRequest);
 			return true;
 		}
 
@@ -76,7 +77,21 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 	@Override
 	public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
 		if (args.length == 2 && args[0].equalsIgnoreCase("status")) {
-			return matchingSuggestions(List.of("compact", "detail"), args[1]);
+			List<String> suggestions = new ArrayList<>(List.of("compact", "detail"));
+			if (sender.hasPermission(STATUS_OTHERS_PERMISSION)) {
+				plugin.getServer().getOnlinePlayers().stream()
+						.map(Player::getName)
+						.sorted(String.CASE_INSENSITIVE_ORDER)
+						.forEach(suggestions::add);
+			}
+			return matchingSuggestions(suggestions, args[1]);
+		}
+
+		if (args.length == 3
+				&& args[0].equalsIgnoreCase("status")
+				&& sender.hasPermission(STATUS_OTHERS_PERMISSION)
+				&& parseStatusViewMode(args[1]) == null) {
+			return matchingSuggestions(List.of("compact", "detail"), args[2]);
 		}
 
 		if (args.length > 1 && adminCommand.isAdminSubcommand(args[0])) {
@@ -136,38 +151,68 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 		}
 	}
 
-	private void sendPlayerStatus(CommandSender sender, StatusViewMode viewMode) {
+	private void sendPlayerStatus(CommandSender sender, StatusRequest statusRequest) {
 		LanguageManager languageManager = plugin.getLanguageManager();
-		if (!(sender instanceof Player player)) {
-			sender.sendMessage(languageManager.getMessage("command.status.player-only"));
-			return;
+		Player targetPlayer;
+		if (statusRequest.targetName() == null) {
+			if (!(sender instanceof Player player)) {
+				sender.sendMessage(languageManager.getMessage("command.status.player-only"));
+				return;
+			}
+			targetPlayer = player;
+		} else {
+			if (!sender.hasPermission(STATUS_OTHERS_PERMISSION)) {
+				sender.sendMessage(languageManager.getMessage("command.status.no-permission-others"));
+				return;
+			}
+
+			targetPlayer = findOnlinePlayer(statusRequest.targetName());
+			if (targetPlayer == null) {
+				sender.sendMessage(languageManager.getMessage(
+						"command.status.player-not-found",
+						Map.of("player", statusRequest.targetName())
+				));
+				return;
+			}
 		}
 
-		if (plugin.getPersistenceManager().isPlayerDataLoading(player.getUniqueId())) {
-			player.sendMessage(languageManager.getMessage("command.status.loading"));
+		if (plugin.getPersistenceManager().isPlayerDataLoading(targetPlayer.getUniqueId())) {
+			String messageKey = statusRequest.targetName() == null
+					? "command.status.loading"
+					: "command.status.other-loading";
+			sender.sendMessage(languageManager.getMessage(
+					messageKey,
+					Map.of("player", targetPlayer.getName())
+			));
 			return;
 		}
 
 		PlayerData playerData = plugin.getPlayerDataManager()
-				.findPlayerData(player)
+				.findPlayerData(targetPlayer)
 				.orElse(null);
 		if (playerData == null) {
-			player.sendMessage(languageManager.getMessage("command.status.unavailable"));
+			String messageKey = statusRequest.targetName() == null
+					? "command.status.unavailable"
+					: "command.status.other-unavailable";
+			sender.sendMessage(languageManager.getMessage(
+					messageKey,
+					Map.of("player", targetPlayer.getName())
+			));
 			return;
 		}
 
-		plugin.getPlayerDataManager().refreshGroupSettings(player);
-		String groupId = plugin.getGroupManager().getGroup(player).getId();
+		plugin.getPlayerDataManager().refreshGroupSettings(targetPlayer);
+		String groupId = plugin.getGroupManager().getGroup(targetPlayer).getId();
 
-		player.sendMessage(languageManager.getMessage(
+		sender.sendMessage(languageManager.getMessage(
 				"command.status.header",
-				Map.of("player", player.getName())
+				Map.of("player", targetPlayer.getName())
 		));
-		player.sendMessage(languageManager.getMessage(
+		sender.sendMessage(languageManager.getMessage(
 				"command.status.group",
 				Map.of("group", groupId)
 		));
-		player.sendMessage(languageManager.getMessage(
+		sender.sendMessage(languageManager.getMessage(
 				"command.status.nutrition",
 				Map.of(
 						"current", formatValue(playerData.getNutrition()),
@@ -175,7 +220,7 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 						"percentage", formatPercentage(playerData.getNutritionPercentage())
 				)
 		));
-		player.sendMessage(languageManager.getMessage(
+		sender.sendMessage(languageManager.getMessage(
 				"command.status.fullness",
 				Map.of(
 						"current", formatValue(playerData.getFullness()),
@@ -183,29 +228,34 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 						"percentage", formatPercentage(playerData.getFullnessPercentage())
 				)
 		));
-		player.sendMessage(languageManager.getMessage(
+		sender.sendMessage(languageManager.getMessage(
 				playerData.isNutritionFrozen()
 						? "command.status.nutrition-frozen"
 						: "command.status.nutrition-active"
 		));
-		player.sendMessage(languageManager.getMessage(
+		sender.sendMessage(languageManager.getMessage(
 				playerData.isFullnessFrozen()
 						? "command.status.fullness-frozen"
 						: "command.status.fullness-active"
 		));
 
-		if (viewMode == StatusViewMode.DETAIL) {
-			sendDetailedEffects(player, playerData, languageManager);
-			sendDetailedHealthRegeneration(player, playerData, languageManager);
-			sendDetailedEating(player, languageManager);
-			sendDetailedLifecycle(player, languageManager);
+		if (statusRequest.viewMode() == StatusViewMode.DETAIL) {
+			sendDetailedEffects(sender, targetPlayer, playerData, languageManager);
+			sendDetailedHealthRegeneration(sender, targetPlayer, playerData, languageManager);
+			sendDetailedEating(sender, targetPlayer, languageManager);
+			sendDetailedLifecycle(sender, languageManager);
 		}
 	}
 
-	private void sendDetailedEffects(Player player, PlayerData playerData, LanguageManager languageManager) {
+	private void sendDetailedEffects(
+			CommandSender recipient,
+			Player player,
+			PlayerData playerData,
+			LanguageManager languageManager
+	) {
 		StatusEffectsConfiguration configuration = plugin.getStatusEffectManager().getConfiguration();
 		if (!configuration.isEnabled()) {
-			player.sendMessage(languageManager.getMessage("command.status.effects-disabled"));
+			recipient.sendMessage(languageManager.getMessage("command.status.effects-disabled"));
 			return;
 		}
 
@@ -215,7 +265,7 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 		StatusEffectDefinition fullnessEffect = configuration.findFullnessEffect(
 				playerData.getFullnessPercentage()
 		);
-		player.sendMessage(languageManager.getMessage(
+		recipient.sendMessage(languageManager.getMessage(
 				"command.status.nutrition-effect",
 				Map.of(
 						"status", getEffectName(languageManager, "nutrition", nutritionEffect),
@@ -223,7 +273,7 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 						"maximum", formatPercentage(nutritionEffect.getMaximumPercentage())
 				)
 		));
-		player.sendMessage(languageManager.getMessage(
+		recipient.sendMessage(languageManager.getMessage(
 				"command.status.fullness-effect",
 				Map.of(
 						"status", getEffectName(languageManager, "fullness", fullnessEffect),
@@ -231,7 +281,7 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 						"maximum", formatPercentage(fullnessEffect.getMaximumPercentage())
 				)
 		));
-		player.sendMessage(languageManager.getMessage(
+		recipient.sendMessage(languageManager.getMessage(
 				"command.status.decay-multipliers",
 				Map.of(
 						"nutrition", formatMultiplier(nutritionEffect.getDecayMultiplier()),
@@ -248,7 +298,7 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 		double attackDamageModifier = configuration.clampAttributeModifier(
 				nutritionEffect.getAttackDamageModifier() + fullnessEffect.getAttackDamageModifier()
 		);
-		player.sendMessage(languageManager.getMessage(
+		recipient.sendMessage(languageManager.getMessage(
 				"command.status.attribute-modifiers",
 				Map.of(
 						"movement", formatSignedPercentage(movementSpeedModifier),
@@ -259,13 +309,14 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 	}
 
 	private void sendDetailedHealthRegeneration(
+			CommandSender recipient,
 			Player player,
 			PlayerData playerData,
 			LanguageManager languageManager
 	) {
 		HealthRegenerationManager regenerationManager = plugin.getHealthRegenerationManager();
 		if (!regenerationManager.isEnabled()) {
-			player.sendMessage(languageManager.getMessage("command.status.health-regeneration-disabled"));
+			recipient.sendMessage(languageManager.getMessage("command.status.health-regeneration-disabled"));
 			return;
 		}
 
@@ -274,7 +325,7 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 				.getHealthRegenerationSettings();
 		double regenerationMultiplier = regenerationManager.getRegenerationMultiplier(playerData);
 		double adjustedHeal = regenerationManager.getAdjustedHealHpPerCycle(player, playerData);
-		player.sendMessage(languageManager.getMessage(
+		recipient.sendMessage(languageManager.getMessage(
 				"command.status.health-regeneration",
 				Map.of(
 						"base", formatValue(groupSettings.getHealHpPerCycle()),
@@ -283,7 +334,7 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 						"interval", regenerationManager.getSettings().getIntervalTicks()
 				)
 		));
-		player.sendMessage(languageManager.getMessage(
+		recipient.sendMessage(languageManager.getMessage(
 				"command.status.health-regeneration-cost",
 				Map.of(
 						"nutrition", formatValue(groupSettings.getNutritionCost()),
@@ -295,16 +346,20 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 		));
 	}
 
-	private void sendDetailedEating(Player player, LanguageManager languageManager) {
+	private void sendDetailedEating(
+			CommandSender recipient,
+			Player player,
+			LanguageManager languageManager
+	) {
 		EatingStatusSnapshot status = plugin.getEatingManager().getStatus(player);
-		player.sendMessage(languageManager.getMessage("command.status.eating-header"));
+		recipient.sendMessage(languageManager.getMessage("command.status.eating-header"));
 		switch (status.getActivity()) {
-			case IDLE -> player.sendMessage(languageManager.getMessage("command.status.eating-idle"));
-			case STARTING -> player.sendMessage(languageManager.getMessage(
+			case IDLE -> recipient.sendMessage(languageManager.getMessage("command.status.eating-idle"));
+			case STARTING -> recipient.sendMessage(languageManager.getMessage(
 					"command.status.eating-starting",
 					Map.of("food", status.getFoodId())
 			));
-			case EATING -> player.sendMessage(languageManager.getMessage(
+			case EATING -> recipient.sendMessage(languageManager.getMessage(
 					"command.status.eating-active",
 					Map.of(
 							"food", status.getFoodId(),
@@ -316,7 +371,7 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 		}
 
 		if (status.getDigestionRemainingTicks() > 0L) {
-			player.sendMessage(languageManager.getMessage(
+			recipient.sendMessage(languageManager.getMessage(
 					"command.status.digestion-active",
 					Map.of(
 							"ticks", status.getDigestionRemainingTicks(),
@@ -324,11 +379,11 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 					)
 			));
 		} else {
-			player.sendMessage(languageManager.getMessage("command.status.digestion-ready"));
+			recipient.sendMessage(languageManager.getMessage("command.status.digestion-ready"));
 		}
 
 		if (status.getBlockedMessageSilenceRemainingTicks() > 0L) {
-			player.sendMessage(languageManager.getMessage(
+			recipient.sendMessage(languageManager.getMessage(
 					"command.status.blocked-message-silence-active",
 					Map.of(
 							"ticks", status.getBlockedMessageSilenceRemainingTicks(),
@@ -336,18 +391,18 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 					)
 			));
 		} else {
-			player.sendMessage(languageManager.getMessage("command.status.blocked-message-silence-inactive"));
+			recipient.sendMessage(languageManager.getMessage("command.status.blocked-message-silence-inactive"));
 		}
 	}
 
-	private void sendDetailedLifecycle(Player player, LanguageManager languageManager) {
+	private void sendDetailedLifecycle(CommandSender recipient, LanguageManager languageManager) {
 		PlayerLifecycleSettings lifecycleSettings = plugin.getPlayerLifecycleManager().getSettings();
 		DeathLifecycleSettings deathSettings = lifecycleSettings.getDeathSettings();
 		RespawnLifecycleSettings respawnSettings = lifecycleSettings.getRespawnSettings();
 		WorldChangeLifecycleSettings worldSettings = lifecycleSettings.getWorldChangeSettings();
 
-		player.sendMessage(languageManager.getMessage("command.status.lifecycle-header"));
-		player.sendMessage(languageManager.getMessage(
+		recipient.sendMessage(languageManager.getMessage("command.status.lifecycle-header"));
+		recipient.sendMessage(languageManager.getMessage(
 				"command.status.lifecycle-death",
 				Map.of(
 						"cancel", formatYesNo(languageManager, deathSettings.isCancelEating()),
@@ -358,7 +413,7 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 						"save", formatYesNo(languageManager, deathSettings.isSaveData())
 				)
 		));
-		player.sendMessage(languageManager.getMessage(
+		recipient.sendMessage(languageManager.getMessage(
 				"command.status.lifecycle-respawn",
 				Map.of(
 						"nutrition", formatLifecycleRule(languageManager, respawnSettings.getNutritionRule()),
@@ -370,7 +425,7 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 						"save", formatYesNo(languageManager, respawnSettings.isSaveData())
 				)
 		));
-		player.sendMessage(languageManager.getMessage(
+		recipient.sendMessage(languageManager.getMessage(
 				"command.status.lifecycle-world-change",
 				Map.of(
 						"cancel", formatYesNo(languageManager, worldSettings.isCancelEating()),
@@ -382,7 +437,7 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 						"save", formatYesNo(languageManager, worldSettings.isSaveData())
 				)
 		));
-		player.sendMessage(languageManager.getMessage(
+		recipient.sendMessage(languageManager.getMessage(
 				"command.status.lifecycle-world-values",
 				Map.of(
 						"nutrition", formatLifecycleRule(languageManager, worldSettings.getNutritionRule()),
@@ -438,20 +493,39 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 		);
 	}
 
-	private StatusViewMode readStatusViewMode(String[] args) {
+	private StatusRequest readStatusRequest(String[] args) {
 		if (args.length == 1) {
-			return StatusViewMode.COMPACT;
+			return new StatusRequest(null, StatusViewMode.COMPACT);
 		}
 
-		if (args.length != 2) {
-			return null;
+		if (args.length == 2) {
+			StatusViewMode selfViewMode = parseStatusViewMode(args[1]);
+			return selfViewMode == null
+					? new StatusRequest(args[1], StatusViewMode.COMPACT)
+					: new StatusRequest(null, selfViewMode);
 		}
 
-		return switch (args[1].toLowerCase(Locale.ROOT)) {
+		if (args.length == 3 && parseStatusViewMode(args[1]) == null) {
+			StatusViewMode targetViewMode = parseStatusViewMode(args[2]);
+			return targetViewMode == null ? null : new StatusRequest(args[1], targetViewMode);
+		}
+
+		return null;
+	}
+
+	private StatusViewMode parseStatusViewMode(String configuredMode) {
+		return switch (configuredMode.toLowerCase(Locale.ROOT)) {
 			case "compact" -> StatusViewMode.COMPACT;
 			case "detail" -> StatusViewMode.DETAIL;
 			default -> null;
 		};
+	}
+
+	private Player findOnlinePlayer(String playerName) {
+		return plugin.getServer().getOnlinePlayers().stream()
+				.filter(player -> player.getName().equalsIgnoreCase(playerName))
+				.findFirst()
+				.orElse(null);
 	}
 
 	private String getEffectName(
@@ -488,7 +562,7 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 	private List<String> matchingSuggestions(List<String> options, String input) {
 		String typedText = input.toLowerCase(Locale.ROOT);
 		return options.stream()
-				.filter(option -> option.startsWith(typedText))
+				.filter(option -> option.toLowerCase(Locale.ROOT).startsWith(typedText))
 				.toList();
 	}
 
@@ -509,5 +583,8 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 	private enum StatusViewMode {
 		COMPACT,
 		DETAIL
+	}
+
+	private record StatusRequest(String targetName, StatusViewMode viewMode) {
 	}
 }
