@@ -5,9 +5,11 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="030c91b8-a5c7-4d5a-82c9-3bed1c9af51f" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/build.gradle" beforeDir="false" afterPath="$PROJECT_DIR$/build.gradle" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/settings.gradle" beforeDir="false" afterPath="$PROJECT_DIR$/settings.gradle" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/basementhost/randomchad/ChadPluginBase.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/basementhost/randomchad/ChadPluginBase.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/basementhost/randomchad/ChadPluginBase.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/basementhost/randomchad/HungerOverhaul.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/basementhost/randomchad/lang/LanguageManager.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/basementhost/randomchad/lang/LanguageManager.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/resources/config.yml" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/resources/config.yml" afterDir="false" />
@@ -91,6 +93,7 @@
     &quot;settings.editor.selected.configurable&quot;: &quot;preferences.lookFeel&quot;,
     &quot;to.speed.mode.migration.done&quot;: &quot;true&quot;,
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+
   }
 }</component>
   <component name="RunManager" selected="Gradle.Chadchat [build]">
