@@ -1,6 +1,22 @@
-name: ChadPluginBase
-version: 0.0.1
-main: basementhost.randomchad.ChadPluginBase
+name: HungerOverhaul
+version: '${version}'
+main: basementhost.randomchad.HungerOverhaul
 api-version: '26.2'
-description: Generic base plugin for future modification for all Random Chad's projects
+description: Replaces Minecraft's vanilla hunger mechanics with fullness and nutrition systems
 author: Random_Chad
+commands:
+  hunger:
+    description: Shows HungerOverhaul information, player status, changes player data, or reloads settings
+    aliases: [ho, nutrition]
+    usage: "/hunger [status [compact|detail]|reload|set|add|reduce|freeze|unfreeze]"
+    permission: hungeroverhaul.use
+permissions:
+  hungeroverhaul.use:
+    description: Allows using the basic HungerOverhaul command
+    default: true
+  hungeroverhaul.reload:
+    description: Allows reloading HungerOverhaul settings
+    default: op
+  hungeroverhaul.admin:
+    description: Allows changing player HungerOverhaul values and freeze states
+    default: op

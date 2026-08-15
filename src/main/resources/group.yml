@@ -1,0 +1,75 @@
+# HungerOverhaul permission group settings.
+# Values missing from a non-default group will inherit from the default group.
+# The default group must provide all values and decay settings and does not need a permission.
+# Higher priority numbers win when a player has more than one group permission.
+# A missing permission becomes hungeroverhaul.group.<group-name> automatically.
+
+groups:
+  default:
+    priority: 0
+    values:
+      max-nutrition: 10000
+      max-fullness: 10000
+      initial-nutrition: 8000
+      initial-fullness: 8000
+    decay:
+      nutrition-per-second: 0.05
+      fullness-per-second: 0.05
+      movement:
+        # Swimming takes priority when the player is also sprinting.
+        sprinting:
+          nutrition-multiplier: 2.0
+          fullness-multiplier: 2.0
+        swimming:
+          nutrition-multiplier: 2.5
+          fullness-multiplier: 2.5
+      actions:
+        jumping:
+          nutrition-cost: 1.0
+          fullness-cost: 1.0
+        attacking:
+          nutrition-cost: 1.0
+          fullness-cost: 2.5
+        taking-damage:
+          nutrition-cost: 2.5
+          fullness-cost: 1.0
+        breaking-block:
+          nutrition-cost: 0.2
+          fullness-cost: 0.2
+        placing-block:
+          nutrition-cost: 0.2
+          fullness-cost: 0.2
+    health-regeneration:
+      # One HP is half of one displayed heart.
+      heal-hp-per-cycle: 1.0
+      nutrition-cost: 10.0
+      fullness-cost: 5.0
+    eating:
+      # 1.0 is normal, values above one are faster, and values below one are slower.
+      speed-multiplier: 1.0
+
+  vip:
+    permission: hungeroverhaul.group.vip
+    priority: 10
+    values:
+      # Any of these four entries may be removed to inherit the default value.
+      max-nutrition: 12000
+      max-fullness: 12000
+      initial-nutrition: 9600
+      initial-fullness: 9600
+    decay:
+      # Missing entries inherit from the default group.
+      fullness-per-second: 0.04
+      movement:
+        sprinting:
+          fullness-multiplier: 1.6
+      actions:
+        jumping:
+          fullness-cost: 0.8
+    health-regeneration:
+      # Missing entries inherit from the default group.
+      heal-hp-per-cycle: 1.5
+      nutrition-cost: 8.0
+      fullness-cost: 4.0
+    eating:
+      speed-multiplier: 1.25

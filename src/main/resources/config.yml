@@ -1,6 +1,134 @@
-# If set to false, the plugin will be disabled from running in the server
-enable: true
+# Select the language used by the plugin.
+# Bundled languages: en_us and zh_cn.
+language: en_us
 
-# This file is read from plugins/ChadPluginBase/lang/.
-# current support language en_us.yml | zh_cn.yml
-lang: en_us.yml
+# Player files are stored in plugins/HungerOverhaul/data/<uuid>.yml.
+# Cached data is saved on quit and removed only from memory after the TTL.
+# Player files on disk are never deleted automatically.
+storage:
+  autosave:
+    enabled: true
+    interval-seconds: 300
+  cache-ttl-seconds: 300
+
+# Controls hunger data during death, respawn, and world changes.
+# Value modes: keep, minimum-percentage, set-percentage, group-initial, preserve-percentage.
+player-lifecycle:
+  death:
+    # Death cancels only the current eating attempt; existing digestion cooldown remains.
+    cancel-eating: true
+    preserve-digestion-cooldown: true
+    save-data: true
+  respawn:
+    # Values below 20% are raised to 20%; higher values are kept.
+    nutrition:
+      mode: minimum-percentage
+      percentage: 20.0
+    fullness:
+      mode: minimum-percentage
+      percentage: 20.0
+    # False respects values frozen by an administrator.
+    affect-frozen-values: false
+    save-data: true
+  world-change:
+    cancel-eating: true
+    preserve-digestion-cooldown: true
+    # Group permissions may have different contexts in different worlds.
+    refresh-group: true
+    # Preserving percentage keeps the same relative value when group maximums change.
+    nutrition:
+      mode: preserve-percentage
+    fullness:
+      mode: preserve-percentage
+    affect-frozen-values: false
+    save-data: true
+
+# Controls whether foods may exceed player value capacity, eating feedback, and interruptions.
+# Individual foods can override capacity, cooldown, duration, and selected interruption rules in foods.yml.
+eating:
+  # Accepts deny or clamp. Both nutrition and fullness are checked independently.
+  overflow-policy: deny
+  # Zero disables the default cooldown. 20 ticks is approximately one second.
+  cooldown-ticks: 40
+  feedback:
+    # Progress, completion, and interruption messages use the action bar instead of chat.
+    progress-actionbar: true
+    progress-update-interval-ticks: 10
+    completion-actionbar: true
+    interruption-actionbar: true
+    # Repeated cooldown and overflow messages are limited separately for each player and reason.
+    # Zero shows every blocked message.
+    blocked-message-interval-ticks: 40
+    # After successful consumption, blocked messages remain hidden for this many ticks.
+    # Consumption is still blocked normally during this period.
+    post-consumption-silent-ticks: 10
+  interrupt:
+    # Item switching and releasing the use key always end native item use.
+    # These three plugin-controlled reasons may be overridden by each food.
+    on-damage: true
+    # Movement means crossing a block boundary; looking around does not count.
+    on-move: false
+    on-sneak-toggle: false
+
+# Passive rates, movement multipliers, and action costs are configured per group in group.yml.
+# Passive rates always mean amount per second, even when the task interval changes.
+value-decay:
+  # Controls passive per-second decay and its movement multipliers.
+  enabled: true
+  interval-ticks: 20
+  # This can be disabled without turning off passive decay.
+  action-costs:
+    enabled: true
+
+# Warns players whose values are low but still above zero.
+# Nutrition and fullness use separate warning cooldowns.
+low-value-warnings:
+  enabled: true
+  check-interval-ticks: 20
+  repeat-interval-seconds: 30
+  nutrition:
+    enabled: true
+    threshold-percentage: 20.0
+  fullness:
+    enabled: true
+    threshold-percentage: 20.0
+
+# Uses the native starvation damage type and may kill the player.
+# One HP is half of one displayed heart.
+starvation-damage:
+  enabled: true
+  # Both damage intervals must be multiples of this value.
+  check-interval-ticks: 20
+  damage-in-peaceful: false
+  # Applies while fullness is above zero and at or below this percentage.
+  critical:
+    enabled: true
+    maximum-fullness-percentage: 10.0
+    interval-ticks: 200
+    damage-hp: 1.0
+  # Replaces the critical rule while fullness is exactly zero.
+  empty:
+    enabled: true
+    interval-ticks: 40
+    damage-hp: 1.0
+
+# Replaces hunger-based vanilla regeneration with a configurable healing cycle.
+# Per-group healing amounts and costs are configured in group.yml.
+health-regeneration:
+  enabled: true
+  interval-ticks: 200
+  # Actual healing below this amount is free. An equal amount is charged.
+  minimum-charged-heal-hp: 0.5
+
+# The vanilla hunger bar is used only as a visual display.
+# source accepts fullness or nutrition.
+# Food levels are whole numbers from 0 to 20.
+# Set minimum-food-level to 7 if players should always be able to sprint.
+vanilla-hunger:
+  # When true, only hunger-based vanilla health regeneration is blocked.
+  # Potions, beacons, commands, and other healing sources are unaffected.
+  block-natural-regeneration: true
+  display:
+    source: fullness
+    minimum-food-level: 1
+    maximum-food-level: 20

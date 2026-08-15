@@ -1,0 +1,189 @@
+# HungerOverhaul food settings.
+# Food IDs currently support vanilla minecraft materials only.
+# nutrition and fullness accept positive, zero, or negative finite numbers.
+# eating-time-ticks optionally replaces the item's native duration before the group speed multiplier.
+# cooldown-ticks and overflow-policy optionally override config.yml for one food.
+# overflow-policy accepts deny or clamp and checks both nutrition and fullness.
+# interrupt may optionally override on-damage, on-move, and on-sneak-toggle for one food.
+# Missing interruption values use the defaults under eating.interrupt in config.yml.
+# Switching items or releasing the use key always ends native item use and is not configurable.
+# Unlisted edible items use fallback when it is enabled.
+# Potions and milk are not handled by fallback.
+# The minecraft:cake values below are applied to each individual slice.
+
+fallback:
+  enabled: true
+  nutrition: 50
+  fullness: 50
+
+foods:
+  minecraft:cake:
+    nutrition: 70
+    fullness: 215
+
+  minecraft:apple:
+    nutrition: 300
+    fullness: 200
+
+  minecraft:bread:
+    nutrition: 200
+    fullness: 400
+    eating-time-ticks: 60
+    interrupt:
+      on-damage: true
+      on-move: false
+      on-sneak-toggle: false
+
+  minecraft:chorus_fruit:
+    nutrition: 100
+    fullness: 100
+
+  minecraft:melon_slice:
+    nutrition: 50
+    fullness: 50
+
+  minecraft:sweet_berries:
+    nutrition: 50
+    fullness: 50
+
+  minecraft:glow_berries:
+    nutrition: 50
+    fullness: 50
+
+  minecraft:carrot:
+    nutrition: 300
+    fullness: 200
+
+  minecraft:potato:
+    nutrition: 25
+    fullness: 100
+
+  minecraft:baked_potato:
+    nutrition: 200
+    fullness: 500
+
+  minecraft:poisonous_potato:
+    nutrition: 0
+    fullness: 125
+
+  minecraft:beetroot:
+    nutrition: 100
+    fullness: 100
+
+  minecraft:beef:
+    nutrition: 200
+    fullness: 400
+
+  minecraft:porkchop:
+    nutrition: 200
+    fullness: 400
+
+  minecraft:chicken:
+    nutrition: 150
+    fullness: 300
+
+  minecraft:mutton:
+    nutrition: 200
+    fullness: 300
+
+  minecraft:rabbit:
+    nutrition: 350
+    fullness: 500
+
+  minecraft:cooked_beef:
+    nutrition: 500
+    fullness: 800
+
+  minecraft:cooked_porkchop:
+    nutrition: 400
+    fullness: 800
+
+  minecraft:cooked_chicken:
+    nutrition: 300
+    fullness: 600
+
+  minecraft:cooked_mutton:
+    nutrition: 400
+    fullness: 600
+
+  minecraft:cooked_rabbit:
+    nutrition: 350
+    fullness: 500
+
+  minecraft:tropical_fish:
+    nutrition: 100
+    fullness: 100
+
+  minecraft:cod:
+    nutrition: 250
+    fullness: 250
+
+  minecraft:cooked_cod:
+    nutrition: 350
+    fullness: 500
+
+  minecraft:salmon:
+    nutrition: 250
+    fullness: 250
+
+  minecraft:cooked_salmon:
+    nutrition: 400
+    fullness: 500
+
+  minecraft:pufferfish:
+    nutrition: 200
+    fullness: 100
+
+  minecraft:cookie:
+    nutrition: 25
+    fullness: 50
+    eating-time-ticks: 10
+
+  minecraft:pumpkin_pie:
+    nutrition: 400
+    fullness: 1000
+
+  minecraft:dried_kelp:
+    nutrition: 50
+    fullness: 75
+    eating-time-ticks: 10
+
+  minecraft:mushroom_stew:
+    nutrition: 600
+    fullness: 450
+
+  minecraft:beetroot_soup:
+    nutrition: 1000
+    fullness: 400
+
+  minecraft:rabbit_stew:
+    nutrition: 600
+    fullness: 600
+
+  minecraft:suspicious_stew:
+    nutrition: 100
+    fullness: 100
+
+  minecraft:honey_bottle:
+    nutrition: 400
+    fullness: 100
+
+  minecraft:golden_apple:
+    nutrition: 1200
+    fullness: 200
+
+  minecraft:enchanted_golden_apple:
+    nutrition: 6000
+    fullness: 200
+
+  minecraft:golden_carrot:
+    nutrition: 600
+    fullness: 200
+
+  minecraft:rotten_flesh:
+    nutrition: 25
+    fullness: 150
+
+  minecraft:spider_eye:
+    nutrition: 50
+    fullness: 25

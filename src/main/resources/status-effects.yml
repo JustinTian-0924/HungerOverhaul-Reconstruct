@@ -1,0 +1,153 @@
+# Global percentage ranges for passive decay and direct player attributes.
+# Each category must cover 0 through 100 without gaps or overlaps.
+# A range includes its minimum and excludes its maximum, except the range ending at 100.
+# Attribute and health regeneration modifiers are relative: -0.10 is -10%, and 0.20 is +20%.
+
+settings:
+  enabled: true
+  update-interval-ticks: 20
+  attribute-modifier-limits:
+    minimum: -0.95
+    maximum: 1.0
+
+fullness-effects:
+  extremely-starving:
+    minimum-percentage: 0
+    maximum-percentage: 10
+    decay-multiplier: 1.0
+    health-regeneration-modifier: -0.90
+    attributes:
+      movement-speed: -0.10
+      block-break-speed: -0.91
+      attack-damage: -0.20
+
+  starving:
+    minimum-percentage: 10
+    maximum-percentage: 20
+    decay-multiplier: 1.0
+    health-regeneration-modifier: -0.75
+    attributes:
+      movement-speed: -0.05
+      block-break-speed: -0.70
+      attack-damage: -0.10
+
+  hungry:
+    minimum-percentage: 20
+    maximum-percentage: 40
+    decay-multiplier: 1.0
+    health-regeneration-modifier: -0.50
+    attributes:
+      movement-speed: 0.0
+      block-break-speed: 0.0
+      attack-damage: 0.0
+
+  normal:
+    minimum-percentage: 40
+    maximum-percentage: 60
+    decay-multiplier: 1.0
+    health-regeneration-modifier: 0.0
+    attributes:
+      movement-speed: 0.0
+      block-break-speed: 0.0
+      attack-damage: 0.0
+
+  satiated:
+    minimum-percentage: 60
+    maximum-percentage: 80
+    decay-multiplier: 1.0
+    health-regeneration-modifier: 0.25
+    attributes:
+      movement-speed: 0.0
+      block-break-speed: 0.0
+      attack-damage: 0.0
+
+  overfed:
+    minimum-percentage: 80
+    maximum-percentage: 90
+    decay-multiplier: 1.5
+    health-regeneration-modifier: 0.50
+    attributes:
+      movement-speed: -0.05
+      block-break-speed: 0.0
+      attack-damage: 0.0
+
+  overstuffed:
+    minimum-percentage: 90
+    maximum-percentage: 100
+    decay-multiplier: 1.5
+    health-regeneration-modifier: 0.50
+    attributes:
+      movement-speed: -0.10
+      block-break-speed: -0.70
+      attack-damage: 0.0
+
+nutrition-effects:
+  severe-deficiency:
+    minimum-percentage: 0
+    maximum-percentage: 10
+    decay-multiplier: 0.4
+    health-regeneration-modifier: -0.75
+    attributes:
+      movement-speed: -0.15
+      block-break-speed: 0.0
+      attack-damage: -0.30
+
+  deficiency:
+    minimum-percentage: 10
+    maximum-percentage: 30
+    decay-multiplier: 0.6
+    health-regeneration-modifier: -0.50
+    attributes:
+      movement-speed: -0.10
+      block-break-speed: 0.0
+      attack-damage: -0.20
+
+  mild-deficiency:
+    minimum-percentage: 30
+    maximum-percentage: 40
+    decay-multiplier: 0.8
+    health-regeneration-modifier: -0.25
+    attributes:
+      movement-speed: -0.05
+      block-break-speed: 0.0
+      attack-damage: -0.10
+
+  normal:
+    minimum-percentage: 40
+    maximum-percentage: 60
+    decay-multiplier: 1.0
+    health-regeneration-modifier: 0.0
+    attributes:
+      movement-speed: 0.0
+      block-break-speed: 0.0
+      attack-damage: 0.0
+
+  sufficient:
+    minimum-percentage: 60
+    maximum-percentage: 75
+    decay-multiplier: 1.5
+    health-regeneration-modifier: 0.25
+    attributes:
+      movement-speed: 0.025
+      block-break-speed: 0.0
+      attack-damage: 0.0
+
+  abundant:
+    minimum-percentage: 75
+    maximum-percentage: 90
+    decay-multiplier: 2.0
+    health-regeneration-modifier: 0.50
+    attributes:
+      movement-speed: 0.05
+      block-break-speed: 0.0
+      attack-damage: 0.10
+
+  excess:
+    minimum-percentage: 90
+    maximum-percentage: 100
+    decay-multiplier: 3.0
+    health-regeneration-modifier: 1.0
+    attributes:
+      movement-speed: 0.10
+      block-break-speed: 0.0
+      attack-damage: 0.20
