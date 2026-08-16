@@ -5,6 +5,7 @@ import basementhost.randomchad.data.PlayerData;
 import basementhost.randomchad.data.StorageSettings;
 import basementhost.randomchad.data.StoredPlayerData;
 import basementhost.randomchad.storage.CorruptPlayerDataException;
+import basementhost.randomchad.storage.OfflinePlayerDataUpdateResult;
 import basementhost.randomchad.storage.PlayerDataStorage;
 import basementhost.randomchad.storage.PlayerDataStorageException;
 import basementhost.randomchad.storage.ReadOnlyPlayerDataQueryResult;
@@ -24,6 +25,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.function.UnaryOperator;
 import java.util.logging.Level;
 
 // Coordinates asynchronous file access, autosaves, and offline memory expiration.
@@ -152,6 +154,29 @@ public final class PlayerDataPersistenceManager {
 		return true;
 	}
 
+	// Saves an already-modified offline TTL cache entry and reports the disk result on the server thread.
+	public boolean saveCachedOfflinePlayerData(UUID playerId, Consumer<Boolean> resultHandler) {
+		Objects.requireNonNull(playerId, "playerId");
+		Objects.requireNonNull(resultHandler, "resultHandler");
+		PlayerData playerData = playerDataManager.findPlayerData(playerId).orElse(null);
+		if (playerData == null) {
+			return false;
+		}
+
+		String playerName = lastKnownNames.getOrDefault(playerId, playerId.toString());
+		String groupId = lastKnownGroupIds.getOrDefault(
+				playerId,
+				plugin.getGroupManager().getDefaultGroup().getId()
+		);
+		long lastSeen = offlineSince.getOrDefault(playerId, System.currentTimeMillis());
+		submitSave(
+				playerId,
+				createSnapshot(playerData, playerName, groupId, lastSeen),
+				resultHandler
+		);
+		return true;
+	}
+
 	public void saveAllLoadedPlayerData() {
 		if (stopping) {
 			return;
@@ -164,6 +189,19 @@ public final class PlayerDataPersistenceManager {
 
 	public boolean isPlayerDataLoading(UUID playerId) {
 		return loadingPlayerIds.contains(Objects.requireNonNull(playerId, "playerId"));
+	}
+
+	public Optional<UUID> findCachedOfflinePlayerIdByName(String playerName) {
+		String searchedName = Objects.requireNonNull(playerName, "playerName");
+		return lastKnownNames.entrySet().stream()
+				.filter(entry -> entry.getValue().equalsIgnoreCase(searchedName))
+				.map(Map.Entry::getKey)
+				.filter(playerDataManager::hasPlayerData)
+				.filter(playerId -> {
+					Player player = plugin.getServer().getPlayer(playerId);
+					return player == null || !player.isOnline();
+				})
+				.findFirst();
 	}
 
 	// Queries an existing file on the storage thread and never loads it into the live cache.
@@ -208,6 +246,47 @@ public final class PlayerDataPersistenceManager {
 					ReadOnlyPlayerDataQueryResult.Status.UNAVAILABLE
 			));
 		}
+	}
+
+	// Serializes the entire offline read-modify-write operation with every other storage task.
+	public void updateOfflinePlayerData(
+			UUID playerId,
+			UnaryOperator<StoredPlayerData> dataUpdater,
+			Consumer<OfflinePlayerDataUpdateResult> resultHandler
+	) {
+		Objects.requireNonNull(playerId, "playerId");
+		Objects.requireNonNull(dataUpdater, "dataUpdater");
+		Objects.requireNonNull(resultHandler, "resultHandler");
+		submitOfflineUpdateTask(
+				() -> performOfflinePlayerDataUpdate(playerId, dataUpdater),
+				resultHandler
+		);
+	}
+
+	// Resolves an old player name and updates the matching file within the same storage task.
+	public void updateOfflinePlayerData(
+			String playerName,
+			UnaryOperator<StoredPlayerData> dataUpdater,
+			Consumer<OfflinePlayerDataUpdateResult> resultHandler
+	) {
+		Objects.requireNonNull(playerName, "playerName");
+		Objects.requireNonNull(dataUpdater, "dataUpdater");
+		Objects.requireNonNull(resultHandler, "resultHandler");
+		submitOfflineUpdateTask(() -> {
+			try {
+				Optional<UUID> playerId = storage.findPlayerIdByNameReadOnly(playerName);
+				return playerId.isEmpty()
+						? OfflinePlayerDataUpdateResult.of(OfflinePlayerDataUpdateResult.Status.NOT_FOUND)
+						: performOfflinePlayerDataUpdate(playerId.get(), dataUpdater);
+			} catch (PlayerDataStorageException exception) {
+				plugin.getLogger().log(
+						Level.WARNING,
+						"Could not resolve offline player data for update: " + playerName + ".",
+						exception
+				);
+				return OfflinePlayerDataUpdateResult.of(OfflinePlayerDataUpdateResult.Status.READ_FAILED);
+			}
+		}, resultHandler);
 	}
 
 	public void shutdown() {
@@ -280,6 +359,90 @@ public final class PlayerDataPersistenceManager {
 
 		ReadOnlyPlayerDataQueryResult completedResult = result;
 		runOnServerThread(() -> resultHandler.accept(completedResult));
+	}
+
+	private OfflinePlayerDataUpdateResult performOfflinePlayerDataUpdate(
+			UUID playerId,
+			UnaryOperator<StoredPlayerData> dataUpdater
+	) {
+		StoredPlayerData storedPlayerData;
+		try {
+			storedPlayerData = storage.loadReadOnly(playerId).orElse(null);
+		} catch (CorruptPlayerDataException exception) {
+			plugin.getLogger().log(
+					Level.WARNING,
+					"Offline update found corrupt player data for " + playerId + ". The file was not changed.",
+					exception
+			);
+			return OfflinePlayerDataUpdateResult.of(OfflinePlayerDataUpdateResult.Status.CORRUPT);
+		} catch (PlayerDataStorageException exception) {
+			plugin.getLogger().log(
+					Level.WARNING,
+					"Could not read offline player data for update: " + playerId + ".",
+					exception
+			);
+			return OfflinePlayerDataUpdateResult.of(OfflinePlayerDataUpdateResult.Status.READ_FAILED);
+		}
+
+		if (storedPlayerData == null) {
+			return OfflinePlayerDataUpdateResult.of(OfflinePlayerDataUpdateResult.Status.NOT_FOUND);
+		}
+
+		StoredPlayerData updatedPlayerData;
+		try {
+			updatedPlayerData = Objects.requireNonNull(
+					dataUpdater.apply(storedPlayerData),
+					"dataUpdater result"
+			);
+		} catch (RuntimeException exception) {
+			plugin.getLogger().log(
+					Level.SEVERE,
+					"Could not prepare offline player data update for " + playerId + ".",
+					exception
+			);
+			return OfflinePlayerDataUpdateResult.of(OfflinePlayerDataUpdateResult.Status.UNAVAILABLE);
+		}
+
+		try {
+			storage.save(playerId, updatedPlayerData);
+			return OfflinePlayerDataUpdateResult.updated(playerId, updatedPlayerData);
+		} catch (PlayerDataStorageException exception) {
+			plugin.getLogger().log(
+					Level.SEVERE,
+					"Could not save offline player data update for " + playerId + ".",
+					exception
+			);
+			return OfflinePlayerDataUpdateResult.of(OfflinePlayerDataUpdateResult.Status.WRITE_FAILED);
+		}
+	}
+
+	private void submitOfflineUpdateTask(
+			java.util.concurrent.Callable<OfflinePlayerDataUpdateResult> updateTask,
+			Consumer<OfflinePlayerDataUpdateResult> resultHandler
+	) {
+		if (stopping) {
+			resultHandler.accept(OfflinePlayerDataUpdateResult.of(
+					OfflinePlayerDataUpdateResult.Status.UNAVAILABLE
+			));
+			return;
+		}
+
+		boolean queued = submitStorageTask(() -> {
+			OfflinePlayerDataUpdateResult result;
+			try {
+				result = updateTask.call();
+			} catch (Exception exception) {
+				plugin.getLogger().log(Level.SEVERE, "Could not complete an offline player data update.", exception);
+				result = OfflinePlayerDataUpdateResult.of(OfflinePlayerDataUpdateResult.Status.UNAVAILABLE);
+			}
+			OfflinePlayerDataUpdateResult completedResult = result;
+			runOnServerThread(() -> resultHandler.accept(completedResult));
+		});
+		if (!queued) {
+			resultHandler.accept(OfflinePlayerDataUpdateResult.of(
+					OfflinePlayerDataUpdateResult.Status.UNAVAILABLE
+			));
+		}
 	}
 
 	private void queryPlayerDataFileReadOnly(
@@ -372,6 +535,25 @@ public final class PlayerDataPersistenceManager {
 		submitStorageTask(() -> saveSnapshot(playerId, storedPlayerData));
 	}
 
+	private void submitSave(
+			UUID playerId,
+			StoredPlayerData storedPlayerData,
+			Consumer<Boolean> resultHandler
+	) {
+		if (stopping) {
+			resultHandler.accept(false);
+			return;
+		}
+
+		boolean queued = submitStorageTask(() -> {
+			boolean saved = saveSnapshot(playerId, storedPlayerData);
+			runOnServerThread(() -> resultHandler.accept(saved));
+		});
+		if (!queued) {
+			resultHandler.accept(false);
+		}
+	}
+
 	private void submitFinalSave(UUID playerId, StoredPlayerData storedPlayerData) {
 		try {
 			storageExecutor.execute(() -> saveSnapshot(playerId, storedPlayerData));
@@ -380,11 +562,13 @@ public final class PlayerDataPersistenceManager {
 		}
 	}
 
-	private void saveSnapshot(UUID playerId, StoredPlayerData storedPlayerData) {
+	private boolean saveSnapshot(UUID playerId, StoredPlayerData storedPlayerData) {
 		try {
 			storage.save(playerId, storedPlayerData);
+			return true;
 		} catch (PlayerDataStorageException exception) {
 			plugin.getLogger().log(Level.SEVERE, "Could not save player data for " + playerId + ".", exception);
+			return false;
 		}
 	}
 

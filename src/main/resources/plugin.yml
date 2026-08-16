@@ -18,7 +18,7 @@ permissions:
     description: Allows reloading HungerOverhaul settings
     default: op
   hungeroverhaul.status.others:
-    description: Allows viewing another online player's HungerOverhaul status
+    description: Allows viewing another player's HungerOverhaul status
     default: op
   hungeroverhaul.admin:
     description: Allows changing player HungerOverhaul values and freeze states
