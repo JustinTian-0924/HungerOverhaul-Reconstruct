@@ -3,7 +3,7 @@ plugins {
 }
 
 group = 'basementhost.randomchad'
-version = '2.0.4'
+version = '2.0.6'
 
 repositories {
     mavenCentral()
@@ -11,10 +11,18 @@ repositories {
         name = 'papermc'
         url = 'https://repo.papermc.io/repository/maven-public/'
     }
+    maven {
+        name = 'placeholderapi'
+        url = 'https://repo.helpch.at/releases/'
+        content {
+            includeModule 'me.clip', 'placeholderapi'
+        }
+    }
 }
 
 dependencies {
     compileOnly 'io.papermc.paper:paper-api:26.3.build.+'
+    compileOnly 'me.clip:placeholderapi:2.12.3'
 }
 
 java {

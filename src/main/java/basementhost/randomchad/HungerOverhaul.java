@@ -1,6 +1,7 @@
 package basementhost.randomchad;
 
 import basementhost.randomchad.command.HungerOverhaulCommand;
+import basementhost.randomchad.compat.placeholderapi.PlaceholderApiHook;
 import basementhost.randomchad.data.DecaySettings;
 import basementhost.randomchad.data.DeathLifecycleSettings;
 import basementhost.randomchad.data.EatingSettings;
@@ -69,6 +70,7 @@ public final class HungerOverhaul extends JavaPlugin {
 	private HealthRegenerationManager healthRegenerationManager;
 	private EatingManager eatingManager;
 	private PlayerLifecycleManager playerLifecycleManager;
+	private PlaceholderApiHook placeholderApiHook;
 
 	@Override
 	public void onEnable() {
@@ -130,11 +132,14 @@ public final class HungerOverhaul extends JavaPlugin {
 		}
 
 		registerCommands();
+		startPlaceholderApiHook();
 		getComponentLogger().info(languageManager.getMessage("plugin.enabled"));
 	}
 
 	@Override
 	public void onDisable() {
+		stopPlaceholderApiHook();
+
 		if (healthRegenerationManager != null) {
 			healthRegenerationManager.shutdown();
 		}
@@ -253,6 +258,34 @@ public final class HungerOverhaul extends JavaPlugin {
 		HungerOverhaulCommand commandHandler = new HungerOverhaulCommand(this);
 		pluginCommand.setExecutor(commandHandler);
 		pluginCommand.setTabCompleter(commandHandler);
+	}
+
+	private void startPlaceholderApiHook() {
+		if (!getServer().getPluginManager().isPluginEnabled("PlaceholderAPI")) {
+			return;
+		}
+
+		try {
+			placeholderApiHook = new PlaceholderApiHook(this);
+			placeholderApiHook.start();
+		} catch (RuntimeException | LinkageError exception) {
+			getLogger().log(Level.WARNING, "Could not enable the optional PlaceholderAPI integration.", exception);
+			stopPlaceholderApiHook();
+		}
+	}
+
+	private void stopPlaceholderApiHook() {
+		if (placeholderApiHook == null) {
+			return;
+		}
+
+		try {
+			placeholderApiHook.stop();
+		} catch (RuntimeException | LinkageError exception) {
+			getLogger().log(Level.WARNING, "Could not finish PlaceholderAPI integration cleanup.", exception);
+		} finally {
+			placeholderApiHook = null;
+		}
 	}
 
 	private boolean loadGroupSettingsAtStartup() {
