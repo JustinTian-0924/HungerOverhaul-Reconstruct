@@ -62,7 +62,7 @@ public final class PlayerDataPersistenceManager {
 		this.storage = Objects.requireNonNull(storage, "storage");
 		this.settings = Objects.requireNonNull(settings, "settings");
 		this.adminAuditLog = new AdminAuditLog(
-				plugin.getDataFolder().toPath().resolve("admin-audit.log"),
+				plugin.getDataFolder().toPath().resolve(AdminAuditLog.FILE_NAME),
 				plugin.getLogger()
 		);
 		this.storageExecutor = Executors.newSingleThreadExecutor(task -> {

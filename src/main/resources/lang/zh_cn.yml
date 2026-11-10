@@ -15,7 +15,7 @@ command:
   reload-validation-failure: "<red>配置校验失败，继续使用原有设置。{reason}</red>"
   reload-activation-failure: "<red>配置已通过校验，但启用时发生错误。请查看服务器控制台。{reason}</red>"
   no-permission: "<red>你没有使用此命令的权限。</red>"
-  usage: "<yellow>用法：/{label} [status|reload|set|add|reduce|freeze|unfreeze]</yellow>"
+  usage: "<yellow>用法：/{label} [status|audit|reload|set|add|reduce|freeze|unfreeze]</yellow>"
   status:
     header: "<gold><bold>{player} 的饥饿状态</bold></gold>"
     usage: "<yellow>用法：/{label} status [compact|detail] 或 /{label} status 玩家 [compact|detail]</yellow>"
@@ -92,6 +92,26 @@ command:
     value-usage: "<yellow>用法：/{label} [set|add|reduce] [玩家] [nutrition|fullness|all] [数值]</yellow>"
     freeze-usage: "<yellow>用法：/{label} [freeze|unfreeze] [玩家] [nutrition|fullness|all]</yellow>"
     success: "<green>已更新玩家 {player} 的 HungerOverhaul 数据。</green>"
+  audit:
+    usage: "<yellow>用法：/{label} audit 玩家名或UUID [页码]</yellow>"
+    invalid-page: "<red>页码必须是从 1 开始的整数。</red>"
+    busy: "<yellow>已有审计查询正在进行，请稍后重试。</yellow>"
+    read-failed: "<red>无法读取审计日志，请检查服务器控制台。</red>"
+    no-entries: "<yellow>找不到 {player} 的审计记录。</yellow>"
+    page-not-found: "<yellow>{player} 的审计记录没有第 {page} 页。</yellow>"
+    header: "<gold><bold>{player} 的管理员审计 · 第 {page} 页</bold></gold>"
+    entry: "<gray>{time}</gray> <white>{actor} → {player}</white> <gray>({mode})</gray> <yellow>{operation}</yellow> <gray>· {outcome}</gray>"
+    values: "<gray>营养 <white>{nutrition_before} → {nutrition_after}</white> | 饱腹 <white>{fullness_before} → {fullness_after}</white></gray>"
+    next-page: "<gray>下一页：<white>/{label} audit {player} {page}</white></gray>"
+    frozen: "冻结"
+    mode:
+      online: "在线"
+      offline-cache: "离线缓存"
+      offline-file: "离线文件"
+    outcome:
+      applied: "已在内存生效"
+      saved: "已保存"
+      cache-only: "仅在缓存生效"
 
 data:
   corrupt-reset: "<yellow>你的 HungerOverhaul 数据文件已经损坏，现已替换为默认数据。</yellow>"

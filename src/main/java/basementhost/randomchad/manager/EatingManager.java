@@ -11,6 +11,7 @@ import basementhost.randomchad.data.FoodInterruptSettings;
 import basementhost.randomchad.data.FoodOverflowPolicy;
 import basementhost.randomchad.data.FoodSettings;
 import basementhost.randomchad.data.PlayerData;
+import net.kyori.adventure.text.Component;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
@@ -33,7 +34,7 @@ public final class EatingManager {
 	private final GroupManager groupManager;
 	private final PlayerDataManager playerDataManager;
 	private final StatusBarManager statusBarManager;
-	private final Map<UUID, Long> cooldownEndsByPlayer = new HashMap<>();
+	private final Map<UUID, CooldownWindow> cooldownsByPlayer = new HashMap<>();
 	private final Map<UUID, Long> blockedMessageSilenceEndsByPlayer = new HashMap<>();
 	private final Map<UUID, EnumMap<BlockedMessageReason, Long>> blockedMessageEndsByPlayer = new HashMap<>();
 	private final Map<UUID, PendingEatingStart> pendingStartsByPlayer = new HashMap<>();
@@ -107,12 +108,13 @@ public final class EatingManager {
 		}
 
 		long now = System.currentTimeMillis();
+		CooldownWindow cooldown = getActiveCooldown(playerId, now);
 		return new EatingStatusSnapshot(
 				activity,
 				foodId,
 				progressPercentage,
 				eatingRemainingTicks,
-				getRemainingTicks(cooldownEndsByPlayer, playerId, now),
+				cooldown == null ? 0L : millisToTicks(cooldown.endsAtMillis() - now),
 				getRemainingTicks(blockedMessageSilenceEndsByPlayer, playerId, now)
 		);
 	}
@@ -183,7 +185,7 @@ public final class EatingManager {
 		}
 
 		if (!preserveDigestionCooldown) {
-			cooldownEndsByPlayer.remove(playerId);
+			cooldownsByPlayer.remove(playerId);
 		}
 		blockedMessageSilenceEndsByPlayer.remove(playerId);
 		blockedMessageEndsByPlayer.remove(playerId);
@@ -205,7 +207,7 @@ public final class EatingManager {
 		}
 		pendingStartsByPlayer.clear();
 		sessionsByPlayer.clear();
-		cooldownEndsByPlayer.clear();
+		cooldownsByPlayer.clear();
 		blockedMessageSilenceEndsByPlayer.clear();
 		blockedMessageEndsByPlayer.clear();
 	}
@@ -213,14 +215,10 @@ public final class EatingManager {
 	public boolean canConsume(Player player, FoodSettings foodSettings) {
 		Objects.requireNonNull(player, "player");
 		Objects.requireNonNull(foodSettings, "foodSettings");
-		double remainingCooldownSeconds = getRemainingCooldownSeconds(player);
-		if (remainingCooldownSeconds > 0.0) {
-			if (shouldSendBlockedMessage(player, BlockedMessageReason.COOLDOWN)) {
-				player.sendMessage(plugin.getLanguageManager().getMessage(
-						"eating.cooldown",
-						Map.of("seconds", formatSeconds(remainingCooldownSeconds))
-				));
-			}
+		long now = System.currentTimeMillis();
+		CooldownWindow cooldown = getActiveCooldown(player.getUniqueId(), now);
+		if (cooldown != null) {
+			sendCooldownFeedback(player, cooldown, now);
 			return false;
 		}
 
@@ -323,9 +321,12 @@ public final class EatingManager {
 				? settings.getCooldownTicks()
 				: foodSettings.getCooldownTicks();
 		if (cooldownTicks <= 0L) {
-			cooldownEndsByPlayer.remove(playerId);
+			cooldownsByPlayer.remove(playerId);
 		} else {
-			cooldownEndsByPlayer.put(playerId, calculateEndTime(now, cooldownTicks));
+			cooldownsByPlayer.put(playerId, new CooldownWindow(
+					calculateEndTime(now, cooldownTicks),
+					plugin.getServer().getCurrentTick()
+			));
 		}
 
 		EatingFeedbackSettings feedbackSettings = settings.getFeedbackSettings();
@@ -391,7 +392,7 @@ public final class EatingManager {
 		statusBarManager.removePlayer(playerId);
 		cancelPendingStart(playerId);
 		sessionsByPlayer.remove(playerId);
-		cooldownEndsByPlayer.remove(playerId);
+		cooldownsByPlayer.remove(playerId);
 		blockedMessageSilenceEndsByPlayer.remove(playerId);
 		blockedMessageEndsByPlayer.remove(playerId);
 	}
@@ -568,20 +569,36 @@ public final class EatingManager {
 		return Math.max(1, (int) adjustedDuration);
 	}
 
-	private double getRemainingCooldownSeconds(Player player) {
-		UUID playerId = player.getUniqueId();
-		Long cooldownEnd = cooldownEndsByPlayer.get(playerId);
-		if (cooldownEnd == null) {
-			return 0.0;
+	private CooldownWindow getActiveCooldown(UUID playerId, long now) {
+		CooldownWindow cooldown = cooldownsByPlayer.get(playerId);
+		if (cooldown != null && cooldown.endsAtMillis() <= now) {
+			cooldownsByPlayer.remove(playerId);
+			return null;
+		}
+		return cooldown;
+	}
+
+	private void sendCooldownFeedback(Player player, CooldownWindow cooldown, long now) {
+		EatingFeedbackSettings feedback = settings.getFeedbackSettings();
+		long elapsedTicks = Integer.toUnsignedLong(plugin.getServer().getCurrentTick() - cooldown.startedAtTick());
+		boolean actionBar = feedback.isCooldownActionBarEnabled();
+		if (elapsedTicks < feedback.getCooldownMessageDelayTicks()
+				|| (actionBar && isProgressFeedbackActive(player.getUniqueId()))
+				|| !shouldSendBlockedMessage(player, BlockedMessageReason.COOLDOWN)) {
+			return;
 		}
 
-		long remainingMillis = cooldownEnd - System.currentTimeMillis();
-		if (remainingMillis <= 0L) {
-			cooldownEndsByPlayer.remove(playerId);
-			return 0.0;
+		long remainingMillis = cooldown.endsAtMillis() - now;
+		Component message = plugin.getLanguageManager().getMessage(
+				"eating.cooldown",
+				Map.of("seconds", formatSeconds(remainingMillis / 1000.0))
+		);
+		if (actionBar) {
+			int holdTicks = (int) Math.min(feedback.getResultHoldTicks(), millisToTicks(remainingMillis));
+			statusBarManager.showEatingFeedback(player, message, holdTicks);
+		} else {
+			player.sendMessage(message);
 		}
-
-		return remainingMillis / 1000.0;
 	}
 
 	private long getRemainingTicks(Map<UUID, Long> endsByPlayer, UUID playerId, long now) {
@@ -596,6 +613,10 @@ public final class EatingManager {
 			return 0L;
 		}
 
+		return millisToTicks(remainingMillis);
+	}
+
+	private long millisToTicks(long remainingMillis) {
 		long completeTicks = remainingMillis / MILLIS_PER_TICK;
 		return remainingMillis % MILLIS_PER_TICK == 0L ? completeTicks : completeTicks + 1L;
 	}
@@ -706,6 +727,9 @@ public final class EatingManager {
 		OVERFLOW,
 		DATA_LOADING,
 		DATA_UNAVAILABLE
+	}
+
+	private record CooldownWindow(long endsAtMillis, int startedAtTick) {
 	}
 
 	private static final class PendingEatingStart {

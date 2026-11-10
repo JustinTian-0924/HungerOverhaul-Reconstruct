@@ -859,6 +859,8 @@ public final class HungerOverhaul extends JavaPlugin {
 				true
 		);
 		int resultHoldTicks = readIntegerSetting(configuration, "eating.feedback.result-hold-ticks", 40);
+		boolean cooldownActionBarEnabled = readBooleanSetting(configuration, "eating.feedback.cooldown-actionbar", false);
+		int cooldownMessageDelayTicks = readIntegerSetting(configuration, "eating.feedback.cooldown-message-delay-ticks", 10);
 		long blockedMessageIntervalTicks = readLongSetting(
 				configuration,
 				"eating.feedback.blocked-message-interval-ticks",
@@ -886,6 +888,8 @@ public final class HungerOverhaul extends JavaPlugin {
 					completionActionBarEnabled,
 					interruptionActionBarEnabled,
 					resultHoldTicks,
+					cooldownActionBarEnabled,
+					cooldownMessageDelayTicks,
 					blockedMessageIntervalTicks,
 					postConsumptionSilentTicks
 			);

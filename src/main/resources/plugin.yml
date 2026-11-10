@@ -9,7 +9,7 @@ commands:
   hunger:
     description: Shows HungerOverhaul information, player status, changes player data, or reloads settings
     aliases: [ho, nutrition]
-    usage: "/hunger [status [player] [compact|detail]|reload|set|add|reduce|freeze|unfreeze]"
+    usage: "/hunger [status [player] [compact|detail]|audit <player> [page]|reload|set|add|reduce|freeze|unfreeze]"
     permission: hungeroverhaul.use
 permissions:
   hungeroverhaul.use:
@@ -23,4 +23,7 @@ permissions:
     default: op
   hungeroverhaul.admin:
     description: Allows changing player HungerOverhaul values and freeze states
+    default: op
+  hungeroverhaul.audit:
+    description: Allows viewing read-only HungerOverhaul admin audit records
     default: op

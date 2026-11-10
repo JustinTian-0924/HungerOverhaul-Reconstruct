@@ -57,8 +57,7 @@ eating:
   # Zero disables the default cooldown. 20 ticks is approximately one second.
   cooldown-ticks: 40
   feedback:
-    # Master switch for progress, completion, and interruption in the action bar.
-    # Blocked-eating chat messages have their own timing rules below.
+    # Master switch for eating messages in the action bar. Cooldown falls back to chat when off.
     enabled: true
     # Progress, completion, and interruption messages use the action bar instead of chat.
     progress-actionbar: true
@@ -67,6 +66,11 @@ eating:
     interruption-actionbar: true
     # Wait this long after completion or interruption before the status bar can resume.
     result-hold-ticks: 40
+    # Send eating.cooldown above the hotbar instead of in chat.
+    cooldown-actionbar: false
+    # Ignore blocked cooldown attempts for this many server ticks after a successful bite.
+    # The general post-consumption silence below also applies.
+    cooldown-message-delay-ticks: 10
     # Repeated cooldown and overflow messages are limited separately for each player and reason.
     # Zero shows every blocked message.
     blocked-message-interval-ticks: 40

@@ -8,6 +8,8 @@ public final class EatingFeedbackSettings {
 	private final boolean completionActionBarEnabled;
 	private final boolean interruptionActionBarEnabled;
 	private final int resultHoldTicks;
+	private final boolean cooldownActionBarEnabled;
+	private final int cooldownMessageDelayTicks;
 	private final long blockedMessageIntervalTicks;
 	private final long postConsumptionSilentTicks;
 
@@ -18,6 +20,8 @@ public final class EatingFeedbackSettings {
 			boolean completionActionBarEnabled,
 			boolean interruptionActionBarEnabled,
 			int resultHoldTicks,
+			boolean cooldownActionBarEnabled,
+			int cooldownMessageDelayTicks,
 			long blockedMessageIntervalTicks,
 			long postConsumptionSilentTicks
 	) {
@@ -26,6 +30,9 @@ public final class EatingFeedbackSettings {
 		}
 		if (resultHoldTicks < 0) {
 			throw new IllegalArgumentException("eating.feedback.result-hold-ticks must not be negative");
+		}
+		if (cooldownMessageDelayTicks < 0) {
+			throw new IllegalArgumentException("eating.feedback.cooldown-message-delay-ticks must not be negative");
 		}
 		if (blockedMessageIntervalTicks < 0L) {
 			throw new IllegalArgumentException("blockedMessageIntervalTicks must not be negative");
@@ -40,6 +47,8 @@ public final class EatingFeedbackSettings {
 		this.completionActionBarEnabled = completionActionBarEnabled;
 		this.interruptionActionBarEnabled = interruptionActionBarEnabled;
 		this.resultHoldTicks = resultHoldTicks;
+		this.cooldownActionBarEnabled = cooldownActionBarEnabled;
+		this.cooldownMessageDelayTicks = cooldownMessageDelayTicks;
 		this.blockedMessageIntervalTicks = blockedMessageIntervalTicks;
 		this.postConsumptionSilentTicks = postConsumptionSilentTicks;
 	}
@@ -66,6 +75,14 @@ public final class EatingFeedbackSettings {
 
 	public int getResultHoldTicks() {
 		return resultHoldTicks;
+	}
+
+	public boolean isCooldownActionBarEnabled() {
+		return actionBarEnabled && cooldownActionBarEnabled;
+	}
+
+	public int getCooldownMessageDelayTicks() {
+		return cooldownMessageDelayTicks;
 	}
 
 	public long getBlockedMessageIntervalTicks() {

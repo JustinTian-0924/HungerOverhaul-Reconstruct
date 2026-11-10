@@ -42,10 +42,12 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 
 	private final HungerOverhaul plugin;
 	private final HungerAdminCommand adminCommand;
+	private final HungerAuditCommand auditCommand;
 
 	public HungerOverhaulCommand(HungerOverhaul plugin) {
 		this.plugin = plugin;
 		this.adminCommand = new HungerAdminCommand(plugin);
+		this.auditCommand = new HungerAuditCommand(plugin);
 	}
 
 	@Override
@@ -71,6 +73,11 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 			}
 
 			sendPlayerStatus(sender, statusRequest);
+			return true;
+		}
+
+		if (args[0].equalsIgnoreCase("audit")) {
+			auditCommand.execute(sender, label, args);
 			return true;
 		}
 
@@ -106,6 +113,10 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 			return matchingSuggestions(List.of("compact", "detail"), args[2]);
 		}
 
+		if (args.length > 1 && args[0].equalsIgnoreCase("audit")) {
+			return auditCommand.tabComplete(sender, args);
+		}
+
 		if (args.length > 1 && adminCommand.isAdminSubcommand(args[0])) {
 			return adminCommand.tabComplete(sender, args);
 		}
@@ -121,6 +132,9 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 		}
 		if (sender.hasPermission(RELOAD_PERMISSION) && "reload".startsWith(typedText)) {
 			suggestions.add("reload");
+		}
+		if (sender.hasPermission(HungerAuditCommand.PERMISSION) && "audit".startsWith(typedText)) {
+			suggestions.add("audit");
 		}
 		if (sender.hasPermission(HungerAdminCommand.ADMIN_PERMISSION)) {
 			for (String adminSubcommand : List.of("set", "add", "reduce", "freeze", "unfreeze")) {

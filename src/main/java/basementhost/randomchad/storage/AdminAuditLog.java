@@ -14,6 +14,8 @@ import java.util.regex.Pattern;
 
 // Appends one line per admin change on the player-data storage thread.
 public final class AdminAuditLog {
+	public static final String FILE_NAME = "admin-audit.log";
+
 	private static final Pattern CONTROL_CHARACTERS = Pattern.compile("[\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}]");
 
 	private final Path logFile;

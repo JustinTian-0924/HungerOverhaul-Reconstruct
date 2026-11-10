@@ -15,7 +15,7 @@ command:
   reload-validation-failure: "<red>Configuration validation failed. The previous settings are still active. {reason}</red>"
   reload-activation-failure: "<red>The configuration passed validation, but an error occurred while activating it. Check the server console. {reason}</red>"
   no-permission: "<red>You do not have permission to use this command.</red>"
-  usage: "<yellow>Usage: /{label} [status|reload|set|add|reduce|freeze|unfreeze]</yellow>"
+  usage: "<yellow>Usage: /{label} [status|audit|reload|set|add|reduce|freeze|unfreeze]</yellow>"
   status:
     header: "<gold><bold>Hunger status for {player}</bold></gold>"
     usage: "<yellow>Usage: /{label} status [compact|detail] or /{label} status player [compact|detail]</yellow>"
@@ -92,6 +92,26 @@ command:
     value-usage: "<yellow>Usage: /{label} [set|add|reduce] [player] [nutrition|fullness|all] [value]</yellow>"
     freeze-usage: "<yellow>Usage: /{label} [freeze|unfreeze] [player] [nutrition|fullness|all]</yellow>"
     success: "<green>Updated HungerOverhaul data for {player}.</green>"
+  audit:
+    usage: "<yellow>Usage: /{label} audit player-name-or-UUID [page]</yellow>"
+    invalid-page: "<red>Page must be an integer starting at 1.</red>"
+    busy: "<yellow>Another audit query is running. Please try again shortly.</yellow>"
+    read-failed: "<red>Could not read the audit log. Check the server console.</red>"
+    no-entries: "<yellow>No audit records found for {player}.</yellow>"
+    page-not-found: "<yellow>There is no page {page} of audit records for {player}.</yellow>"
+    header: "<gold><bold>Admin audit for {player} · Page {page}</bold></gold>"
+    entry: "<gray>{time}</gray> <white>{actor} → {player}</white> <gray>({mode})</gray> <yellow>{operation}</yellow> <gray>· {outcome}</gray>"
+    values: "<gray>Nutrition <white>{nutrition_before} → {nutrition_after}</white> | Fullness <white>{fullness_before} → {fullness_after}</white></gray>"
+    next-page: "<gray>Next page: <white>/{label} audit {player} {page}</white></gray>"
+    frozen: "frozen"
+    mode:
+      online: "online"
+      offline-cache: "offline cache"
+      offline-file: "offline file"
+    outcome:
+      applied: "applied in memory"
+      saved: "saved"
+      cache-only: "applied to cache only"
 
 data:
   corrupt-reset: "<yellow>Your HungerOverhaul data file was damaged and has been replaced with default data.</yellow>"
