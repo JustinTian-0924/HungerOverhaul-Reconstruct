@@ -97,6 +97,9 @@ data:
   corrupt-reset: "<yellow>你的 HungerOverhaul 数据文件已经损坏，现已替换为默认数据。</yellow>"
   load-failure: "<red>无法加载你的 HungerOverhaul 数据，请联系服务器管理员。</red>"
 
+actionbar:
+  format: "<gold>营养</gold> <white>{nutrition}/{max_nutrition}</white> <dark_gray>|</dark_gray> <gold>饱腹</gold> <white>{fullness}/{max_fullness}</white>"
+
 warning:
   low-nutrition: "<yellow>你的营养值偏低：<white>{percentage}%</white>（警告阈值：{threshold}%），请尽快选择有营养的食物。</yellow>"
   low-fullness: "<yellow>你的饱腹值偏低：<white>{percentage}%</white>（警告阈值：{threshold}%），请尽快进食。</yellow>"

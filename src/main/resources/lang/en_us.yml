@@ -97,6 +97,9 @@ data:
   corrupt-reset: "<yellow>Your HungerOverhaul data file was damaged and has been replaced with default data.</yellow>"
   load-failure: "<red>Your HungerOverhaul data could not be loaded. Please contact a server administrator.</red>"
 
+actionbar:
+  format: "<gold>Nutrition</gold> <white>{nutrition}/{max_nutrition}</white> <dark_gray>|</dark_gray> <gold>Fullness</gold> <white>{fullness}/{max_fullness}</white>"
+
 warning:
   low-nutrition: "<yellow>Your nutrition is low: <white>{percentage}%</white> (warning threshold: {threshold}%). Choose nutritious food soon.</yellow>"
   low-fullness: "<yellow>Your fullness is low: <white>{percentage}%</white> (warning threshold: {threshold}%). Eat something soon.</yellow>"

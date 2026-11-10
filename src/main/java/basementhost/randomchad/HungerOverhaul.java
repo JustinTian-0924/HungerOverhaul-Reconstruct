@@ -16,6 +16,7 @@ import basementhost.randomchad.data.PlayerLifecycleSettings;
 import basementhost.randomchad.data.RespawnLifecycleSettings;
 import basementhost.randomchad.data.StarvationDamageRule;
 import basementhost.randomchad.data.StarvationDamageSettings;
+import basementhost.randomchad.data.StatusBarSettings;
 import basementhost.randomchad.data.StatusEffectsConfiguration;
 import basementhost.randomchad.data.StorageSettings;
 import basementhost.randomchad.data.VanillaHungerSettings;
@@ -40,6 +41,7 @@ import basementhost.randomchad.manager.PlayerDataManager;
 import basementhost.randomchad.manager.PlayerDataPersistenceManager;
 import basementhost.randomchad.manager.PlayerLifecycleManager;
 import basementhost.randomchad.manager.StatusAttributeManager;
+import basementhost.randomchad.manager.StatusBarManager;
 import basementhost.randomchad.manager.StatusEffectManager;
 import basementhost.randomchad.manager.StarvationDamageManager;
 import basementhost.randomchad.manager.ValueDecayManager;
@@ -77,6 +79,7 @@ public final class HungerOverhaul extends JavaPlugin {
 	private StarvationDamageManager starvationDamageManager;
 	private HealthRegenerationManager healthRegenerationManager;
 	private EatingManager eatingManager;
+	private StatusBarManager statusBarManager;
 	private PlayerLifecycleManager playerLifecycleManager;
 	private PlaceholderApiHook placeholderApiHook;
 
@@ -154,6 +157,10 @@ public final class HungerOverhaul extends JavaPlugin {
 
 		if (eatingManager != null) {
 			eatingManager.shutdown();
+		}
+
+		if (statusBarManager != null) {
+			statusBarManager.shutdown();
 		}
 
 		if (starvationDamageManager != null) {
@@ -292,6 +299,7 @@ public final class HungerOverhaul extends JavaPlugin {
 					readStarvationDamageSettings(configuration),
 					readHealthRegenerationSettings(configuration),
 					readEatingSettings(configuration),
+					readStatusBarSettings(configuration),
 					readPlayerLifecycleSettings(configuration)
 			);
 		} catch (IllegalStateException exception) {
@@ -316,6 +324,7 @@ public final class HungerOverhaul extends JavaPlugin {
 		starvationDamageManager.updateSettings(main.starvationDamage());
 		healthRegenerationManager.updateSettings(main.healthRegeneration());
 		eatingManager.updateSettings(main.eating());
+		statusBarManager.updateSettings(main.statusBar(), main.eating().getFeedbackSettings().isActionBarEnabled());
 		playerLifecycleManager.updateSettings(main.playerLifecycle());
 		statusAttributeManager.reload();
 		persistenceManager.saveAllLoadedPlayerData();
@@ -438,7 +447,9 @@ public final class HungerOverhaul extends JavaPlugin {
 	private boolean startEatingSystem() {
 		try {
 			EatingSettings settings = readEatingSettings(getConfig());
-			eatingManager = new EatingManager(this, groupManager, playerDataManager, settings);
+			StatusBarSettings statusBarSettings = readStatusBarSettings(getConfig());
+			statusBarManager = new StatusBarManager(this, playerDataManager);
+			eatingManager = new EatingManager(this, groupManager, playerDataManager, statusBarManager, settings);
 			FoodConsumptionManager foodConsumptionManager = new FoodConsumptionManager(this, eatingManager);
 			getServer().getPluginManager().registerEvents(
 					new FoodListener(foodManager, foodConsumptionManager, eatingManager),
@@ -453,6 +464,7 @@ public final class HungerOverhaul extends JavaPlugin {
 					this
 			);
 			eatingManager.start();
+			statusBarManager.updateSettings(statusBarSettings, settings.getFeedbackSettings().isActionBarEnabled());
 			return true;
 		} catch (RuntimeException exception) {
 			getLogger().log(
@@ -812,9 +824,20 @@ public final class HungerOverhaul extends JavaPlugin {
 		}
 	}
 
+	private StatusBarSettings readStatusBarSettings(FileConfiguration configuration) {
+		boolean enabled = readBooleanSetting(configuration, "actionbar.enabled", true);
+		int updateIntervalTicks = readIntegerSetting(configuration, "actionbar.update-interval-ticks", 20);
+		try {
+			return new StatusBarSettings(enabled, updateIntervalTicks);
+		} catch (IllegalArgumentException exception) {
+			throw new IllegalStateException(exception.getMessage(), exception);
+		}
+	}
+
 	private EatingSettings readEatingSettings(FileConfiguration configuration) {
 		String configuredOverflowPolicy = readStringSetting(configuration, "eating.overflow-policy", "deny");
 		long cooldownTicks = readLongSetting(configuration, "eating.cooldown-ticks", 40L);
+		boolean feedbackActionBarEnabled = readBooleanSetting(configuration, "eating.feedback.enabled", true);
 		boolean progressActionBarEnabled = readBooleanSetting(
 				configuration,
 				"eating.feedback.progress-actionbar",
@@ -835,6 +858,7 @@ public final class HungerOverhaul extends JavaPlugin {
 				"eating.feedback.interruption-actionbar",
 				true
 		);
+		int resultHoldTicks = readIntegerSetting(configuration, "eating.feedback.result-hold-ticks", 40);
 		long blockedMessageIntervalTicks = readLongSetting(
 				configuration,
 				"eating.feedback.blocked-message-interval-ticks",
@@ -856,10 +880,12 @@ public final class HungerOverhaul extends JavaPlugin {
 		try {
 			FoodOverflowPolicy overflowPolicy = FoodOverflowPolicy.fromConfigValue(configuredOverflowPolicy);
 			EatingFeedbackSettings feedbackSettings = new EatingFeedbackSettings(
+					feedbackActionBarEnabled,
 					progressActionBarEnabled,
 					progressUpdateIntervalTicks,
 					completionActionBarEnabled,
 					interruptionActionBarEnabled,
+					resultHoldTicks,
 					blockedMessageIntervalTicks,
 					postConsumptionSilentTicks
 			);
@@ -1051,6 +1077,7 @@ public final class HungerOverhaul extends JavaPlugin {
 			StarvationDamageSettings starvationDamage,
 			HealthRegenerationSettings healthRegeneration,
 			EatingSettings eating,
+			StatusBarSettings statusBar,
 			PlayerLifecycleSettings playerLifecycle
 	) {
 	}

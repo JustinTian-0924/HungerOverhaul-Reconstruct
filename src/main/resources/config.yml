@@ -43,6 +43,12 @@ player-lifecycle:
     affect-frozen-values: false
     save-data: true
 
+# Shows nutrition and fullness above the hotbar while no eating feedback is active.
+# Customize the text under actionbar.format in the language file.
+actionbar:
+  enabled: true
+  update-interval-ticks: 20
+
 # Controls whether foods may exceed player value capacity, eating feedback, and interruptions.
 # Individual foods can override capacity, cooldown, duration, and selected interruption rules in foods.yml.
 eating:
@@ -51,11 +57,16 @@ eating:
   # Zero disables the default cooldown. 20 ticks is approximately one second.
   cooldown-ticks: 40
   feedback:
+    # Master switch for progress, completion, and interruption in the action bar.
+    # Blocked-eating chat messages have their own timing rules below.
+    enabled: true
     # Progress, completion, and interruption messages use the action bar instead of chat.
     progress-actionbar: true
     progress-update-interval-ticks: 10
     completion-actionbar: true
     interruption-actionbar: true
+    # Wait this long after completion or interruption before the status bar can resume.
+    result-hold-ticks: 40
     # Repeated cooldown and overflow messages are limited separately for each player and reason.
     # Zero shows every blocked message.
     blocked-message-interval-ticks: 40

@@ -32,6 +32,7 @@ public final class EatingManager {
 	private final HungerOverhaul plugin;
 	private final GroupManager groupManager;
 	private final PlayerDataManager playerDataManager;
+	private final StatusBarManager statusBarManager;
 	private final Map<UUID, Long> cooldownEndsByPlayer = new HashMap<>();
 	private final Map<UUID, Long> blockedMessageSilenceEndsByPlayer = new HashMap<>();
 	private final Map<UUID, EnumMap<BlockedMessageReason, Long>> blockedMessageEndsByPlayer = new HashMap<>();
@@ -46,11 +47,13 @@ public final class EatingManager {
 			HungerOverhaul plugin,
 			GroupManager groupManager,
 			PlayerDataManager playerDataManager,
+			StatusBarManager statusBarManager,
 			EatingSettings settings
 	) {
 		this.plugin = Objects.requireNonNull(plugin, "plugin");
 		this.groupManager = Objects.requireNonNull(groupManager, "groupManager");
 		this.playerDataManager = Objects.requireNonNull(playerDataManager, "playerDataManager");
+		this.statusBarManager = Objects.requireNonNull(statusBarManager, "statusBarManager");
 		this.settings = Objects.requireNonNull(settings, "settings");
 	}
 
@@ -70,6 +73,11 @@ public final class EatingManager {
 
 	public void updateSettings(EatingSettings settings) {
 		this.settings = Objects.requireNonNull(settings, "settings");
+	}
+
+	public boolean isProgressFeedbackActive(UUID playerId) {
+		return settings.getFeedbackSettings().isProgressActionBarEnabled()
+				&& (sessionsByPlayer.containsKey(playerId) || pendingStartsByPlayer.containsKey(playerId));
 	}
 
 	public EatingStatusSnapshot getStatus(Player player) {
@@ -320,17 +328,19 @@ public final class EatingManager {
 			cooldownEndsByPlayer.put(playerId, calculateEndTime(now, cooldownTicks));
 		}
 
-		if (settings.getFeedbackSettings().isCompletionActionBarEnabled()) {
+		EatingFeedbackSettings feedbackSettings = settings.getFeedbackSettings();
+		if (feedbackSettings.isCompletionActionBarEnabled()) {
 			String messageKey = result.wasAnyValueClamped()
 					? "eating.feedback.completed-clamped"
 					: "eating.feedback.completed";
-			player.sendActionBar(plugin.getLanguageManager().getMessage(
-					messageKey,
-					Map.of(
+			statusBarManager.showEatingFeedback(
+					player,
+					plugin.getLanguageManager().getMessage(messageKey, Map.of(
 							"nutrition", formatSignedValue(result.getNutritionChange()),
 							"fullness", formatSignedValue(result.getFullnessChange())
-					)
-			));
+					)),
+					feedbackSettings.getResultHoldTicks()
+			);
 		}
 	}
 
@@ -378,6 +388,7 @@ public final class EatingManager {
 	public void clearPlayer(Player player) {
 		Objects.requireNonNull(player, "player");
 		UUID playerId = player.getUniqueId();
+		statusBarManager.removePlayer(playerId);
 		cancelPendingStart(playerId);
 		sessionsByPlayer.remove(playerId);
 		cooldownEndsByPlayer.remove(playerId);
@@ -470,13 +481,14 @@ public final class EatingManager {
 				100.0,
 				session.getElapsedTicks() * 100.0 / session.getAdjustedDurationTicks()
 		);
-		player.sendActionBar(plugin.getLanguageManager().getMessage(
-				"eating.feedback.progress",
-				Map.of(
+		statusBarManager.showEatingFeedback(
+				player,
+				plugin.getLanguageManager().getMessage("eating.feedback.progress", Map.of(
 						"percentage", formatPercentage(percentage),
 						"seconds", formatSeconds(remainingTicks / 20.0)
-				)
-		));
+				)),
+				0
+		);
 		session.markProgressSent();
 	}
 
@@ -498,8 +510,13 @@ public final class EatingManager {
 	}
 
 	private void sendInterruptionFeedback(Player player, EatingInterruptReason reason) {
-		if (settings.getFeedbackSettings().isInterruptionActionBarEnabled()) {
-			player.sendActionBar(plugin.getLanguageManager().getMessage(getInterruptionMessageKey(reason)));
+		EatingFeedbackSettings feedbackSettings = settings.getFeedbackSettings();
+		if (feedbackSettings.isInterruptionActionBarEnabled()) {
+			statusBarManager.showEatingFeedback(
+					player,
+					plugin.getLanguageManager().getMessage(getInterruptionMessageKey(reason)),
+					feedbackSettings.getResultHoldTicks()
+			);
 		}
 	}
 
