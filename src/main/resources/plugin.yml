@@ -4,7 +4,7 @@ main: basementhost.randomchad.HungerOverhaul
 api-version: '26.3'
 description: Replaces Minecraft's vanilla hunger mechanics with fullness and nutrition systems
 author: Random_Chad
-softdepend: [PlaceholderAPI]
+softdepend: [PlaceholderAPI, CraftEngine]
 commands:
   hunger:
     description: Shows HungerOverhaul information, player status, changes player data, or reloads settings

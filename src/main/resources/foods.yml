@@ -1,5 +1,5 @@
 # HungerOverhaul food settings.
-# Food IDs currently support vanilla minecraft materials only.
+# The foods section accepts vanilla Minecraft material IDs and CraftEngine item IDs.
 # nutrition and fullness accept positive, zero, or negative finite numbers.
 # eating-time-ticks optionally replaces the item's native duration before the group speed multiplier.
 # cooldown-ticks and overflow-policy optionally override config.yml for one food.
@@ -16,7 +16,41 @@ fallback:
   nutrition: 50
   fullness: 50
 
+# Replace {} with named rules. Copy the server-side material and model from the actual item.
+# All custom foods need Minecraft's consumable component; these rules do not add it.
+# Nexo items can use their actual server-side item_model value here. For CraftEngine,
+# prefer the item ID under foods, even when the model is sent only to the client.
+# Priority: CraftEngine ID, both model selectors, item-model only, custom-model-data only,
+# vanilla material, then fallback. At equal model priority, the first rule wins.
+# A number matches floats[0]. For lists, each listed field must match in full and in order.
+# These examples are disabled until copied into custom-foods:
+#   berry_bun:
+#     material: minecraft:paper
+#     item-model: nexo:berry_bun
+#     nutrition: 260
+#     fullness: 430
+#   model_bread:
+#     material: minecraft:bread
+#     custom-model-data: 12345
+#     nutrition: 350
+#     fullness: 500
+#   herb_roll:
+#     material: minecraft:bread
+#     custom-model-data:
+#       floats: [12.5]
+#       strings: ["pack:herb_roll"]
+#       flags: [true]
+#       colors: ["#66CC88"]
+#     nutrition: 320
+#     fullness: 420
+custom-foods: {}
+
 foods:
+  # CraftEngine item example (the item ID, independent of material or model):
+  # default:hami_melon_slice:
+  #   fullness: 150
+  #   nutrition: 250
+
   minecraft:cake:
     nutrition: 70
     fullness: 215

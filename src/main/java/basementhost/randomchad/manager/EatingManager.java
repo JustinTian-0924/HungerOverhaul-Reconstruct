@@ -93,7 +93,7 @@ public final class EatingManager {
 
 		if (session != null) {
 			activity = EatingStatusSnapshot.Activity.EATING;
-			foodId = session.getItemSnapshot().getType().getKey().toString();
+			foodId = getStatusFoodId(session.getItemSnapshot(), session.getFoodSettings());
 			progressPercentage = Math.min(
 					100.0,
 					session.getElapsedTicks() * 100.0 / session.getAdjustedDurationTicks()
@@ -104,7 +104,7 @@ public final class EatingManager {
 			);
 		} else if (pendingStart != null) {
 			activity = EatingStatusSnapshot.Activity.STARTING;
-			foodId = pendingStart.getItemSnapshot().getType().getKey().toString();
+			foodId = pendingStart.getFoodId();
 		}
 
 		long now = System.currentTimeMillis();
@@ -117,6 +117,11 @@ public final class EatingManager {
 				cooldown == null ? 0L : millisToTicks(cooldown.endsAtMillis() - now),
 				getRemainingTicks(blockedMessageSilenceEndsByPlayer, playerId, now)
 		);
+	}
+
+	private String getStatusFoodId(ItemStack item, FoodSettings foodSettings) {
+		String id = foodSettings.getId();
+		return id.contains(":") || id.startsWith("custom-foods.") ? id : item.getType().getKey().toString();
 	}
 
 	// A successful reload ends sessions that were calculated from the previous configuration.
@@ -293,7 +298,7 @@ public final class EatingManager {
 		);
 		pendingStartsByPlayer.put(
 				playerId,
-				new PendingEatingStart(pendingStart, hand, itemSnapshot)
+				new PendingEatingStart(pendingStart, hand, itemSnapshot, getStatusFoodId(itemSnapshot, foodSettings))
 		);
 	}
 
@@ -736,11 +741,13 @@ public final class EatingManager {
 		private final BukkitTask task;
 		private final EquipmentSlot hand;
 		private final ItemStack itemSnapshot;
+		private final String foodId;
 
-		private PendingEatingStart(BukkitTask task, EquipmentSlot hand, ItemStack itemSnapshot) {
+		private PendingEatingStart(BukkitTask task, EquipmentSlot hand, ItemStack itemSnapshot, String foodId) {
 			this.task = task;
 			this.hand = hand;
 			this.itemSnapshot = itemSnapshot;
+			this.foodId = foodId;
 		}
 
 		private BukkitTask getTask() {
@@ -753,6 +760,10 @@ public final class EatingManager {
 
 		private ItemStack getItemSnapshot() {
 			return itemSnapshot;
+		}
+
+		private String getFoodId() {
+			return foodId;
 		}
 	}
 
