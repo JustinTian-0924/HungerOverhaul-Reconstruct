@@ -12,7 +12,8 @@ command:
     status-hint: "<gray>View your hunger status: <white>/{label} status</white></gray>"
     reload-hint: "<gray>Reload settings: <white>/{label} reload</white></gray>"
   reload-success: "<green>Configuration and language files have been reloaded.</green>"
-  reload-failure: "<red>Could not reload the settings. The previous valid settings are still active. Check the server console.</red>"
+  reload-validation-failure: "<red>Configuration validation failed. The previous settings are still active. {reason}</red>"
+  reload-activation-failure: "<red>The configuration passed validation, but an error occurred while activating it. Check the server console. {reason}</red>"
   no-permission: "<red>You do not have permission to use this command.</red>"
   usage: "<yellow>Usage: /{label} [status|reload|set|add|reduce|freeze|unfreeze]</yellow>"
   status:

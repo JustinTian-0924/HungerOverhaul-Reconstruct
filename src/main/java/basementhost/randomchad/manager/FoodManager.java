@@ -34,18 +34,15 @@ public final class FoodManager {
 		this.plugin = Objects.requireNonNull(plugin, "plugin");
 	}
 
-	public void validateConfiguration() {
-		File foodFile = prepareFoodFile();
-		YamlConfiguration configuration = loadFoodConfiguration(foodFile);
-		parseConfiguration(configuration);
+	public void loadInitialConfiguration() {
+		applyConfiguration(parseConfiguration(loadFoodConfiguration(prepareFoodFile())));
 	}
 
-	// Existing settings are replaced only after the entire new file passes validation.
-	public void reload() {
-		File foodFile = prepareFoodFile();
-		YamlConfiguration configuration = loadFoodConfiguration(foodFile);
-		ParsedFoodConfiguration parsedConfiguration = parseConfiguration(configuration);
+	public ParsedFoodConfiguration readConfiguration() {
+		return parseConfiguration(loadFoodConfiguration(new File(plugin.getDataFolder(), FOOD_FILE_NAME)));
+	}
 
+	public void applyConfiguration(ParsedFoodConfiguration parsedConfiguration) {
 		settingsByMaterial = parsedConfiguration.getSettingsByMaterial();
 		fallbackSettings = parsedConfiguration.getFallbackSettings();
 		plugin.getLogger().info(
@@ -333,7 +330,7 @@ public final class FoodManager {
 		return new IllegalStateException("Invalid " + FOOD_FILE_NAME + ": " + message, cause);
 	}
 
-	private static final class ParsedFoodConfiguration {
+	public static final class ParsedFoodConfiguration {
 		private final Map<Material, FoodSettings> settingsByMaterial;
 		private final FoodSettings fallbackSettings;
 

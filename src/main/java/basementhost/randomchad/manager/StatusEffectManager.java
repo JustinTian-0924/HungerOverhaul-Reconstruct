@@ -29,11 +29,15 @@ public final class StatusEffectManager {
 		this.plugin = Objects.requireNonNull(plugin, "plugin");
 	}
 
-	// The old table remains active unless the entire new file passes validation.
-	public void reload() {
-		File effectFile = prepareEffectFile();
-		YamlConfiguration loadedFile = loadEffectFile(effectFile);
-		StatusEffectsConfiguration parsedConfiguration = parseConfiguration(loadedFile);
+	public void loadInitialConfiguration() {
+		applyConfiguration(parseConfiguration(loadEffectFile(prepareEffectFile())));
+	}
+
+	public StatusEffectsConfiguration readConfiguration() {
+		return parseConfiguration(loadEffectFile(new File(plugin.getDataFolder(), FILE_NAME)));
+	}
+
+	public void applyConfiguration(StatusEffectsConfiguration parsedConfiguration) {
 		configuration = parsedConfiguration;
 
 		plugin.getLogger().info(

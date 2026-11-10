@@ -49,12 +49,15 @@ public final class GroupManager {
 		this.plugin = Objects.requireNonNull(plugin, "plugin");
 	}
 
-	// Existing settings are replaced only after the entire new file passes validation.
-	public void reload() {
-		File groupFile = prepareGroupFile();
-		YamlConfiguration groupConfiguration = loadGroupConfiguration(groupFile);
-		ParsedGroups parsedGroups = parseGroups(groupConfiguration);
+	public void loadInitialConfiguration() {
+		applyConfiguration(parseGroups(loadGroupConfiguration(prepareGroupFile())));
+	}
 
+	public ParsedGroups readConfiguration() {
+		return parseGroups(loadGroupConfiguration(new File(plugin.getDataFolder(), GROUP_FILE_NAME)));
+	}
+
+	public void applyConfiguration(ParsedGroups parsedGroups) {
 		groupsById = parsedGroups.getGroupsById();
 		defaultGroup = parsedGroups.getDefaultGroup();
 		warnedPriorityTies.clear();
@@ -676,7 +679,7 @@ public final class GroupManager {
 		return new IllegalStateException("Invalid " + GROUP_FILE_NAME + ": " + message, cause);
 	}
 
-	private static final class ParsedGroups {
+	public static final class ParsedGroups {
 		private final Map<String, Group> groupsById;
 		private final Group defaultGroup;
 

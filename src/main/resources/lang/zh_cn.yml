@@ -12,7 +12,8 @@ command:
     status-hint: "<gray>查看你的饥饿状态：<white>/{label} status</white></gray>"
     reload-hint: "<gray>重新加载设置：<white>/{label} reload</white></gray>"
   reload-success: "<green>配置文件和语言文件已重新加载。</green>"
-  reload-failure: "<red>无法重新加载设置。之前有效的设置仍在使用，请检查服务器控制台。</red>"
+  reload-validation-failure: "<red>配置校验失败，继续使用原有设置。{reason}</red>"
+  reload-activation-failure: "<red>配置已通过校验，但启用时发生错误。请查看服务器控制台。{reason}</red>"
   no-permission: "<red>你没有使用此命令的权限。</red>"
   usage: "<yellow>用法：/{label} [status|reload|set|add|reduce|freeze|unfreeze]</yellow>"
   status:

@@ -805,12 +805,13 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 			return;
 		}
 
-		if (plugin.reloadPluginSettings()) {
-			sender.sendMessage(plugin.getLanguageManager().getMessage("command.reload-success"));
-			return;
-		}
-
-		sender.sendMessage(plugin.getLanguageManager().getMessage("command.reload-failure"));
+		HungerOverhaul.ReloadResult result = plugin.reloadPluginSettings();
+		String messageKey = switch (result.status()) {
+			case SUCCESS -> "command.reload-success";
+			case REJECTED -> "command.reload-validation-failure";
+			case ACTIVATION_FAILED -> "command.reload-activation-failure";
+		};
+		sender.sendMessage(plugin.getLanguageManager().getMessage(messageKey, Map.of("reason", result.reason())));
 	}
 
 	private enum StatusViewMode {

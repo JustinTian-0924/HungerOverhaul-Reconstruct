@@ -5,6 +5,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
 
@@ -44,42 +45,51 @@ public final class LanguageManager {
 		this.plugin = Objects.requireNonNull(plugin, "plugin");
 	}
 
-	public void reload() {
-		warnedMissingKeys.clear();
+	public void loadInitialConfiguration() {
 		copyBundledLanguageFiles();
+		applyConfiguration(readConfiguration(plugin.getConfig().getString("language", DEFAULT_LANGUAGE), false));
+	}
 
-		bundledFallbackLanguage = loadBundledLanguageFile(DEFAULT_LANGUAGE);
-		fallbackLanguage = loadLanguageFile(DEFAULT_LANGUAGE);
-		String configuredLanguage = plugin.getConfig().getString("language", DEFAULT_LANGUAGE);
+	public LanguageConfiguration readConfiguration(String configuredLanguage) {
+		return readConfiguration(configuredLanguage, true);
+	}
+
+	private LanguageConfiguration readConfiguration(String configuredLanguage, boolean strict) {
 		String normalizedLanguage = normalizeLanguageName(configuredLanguage);
-
 		if (normalizedLanguage == null) {
-			plugin.getLogger().warning(
-					"Invalid language name '" + configuredLanguage + "'. Using " + DEFAULT_LANGUAGE + "."
-			);
-			useFallbackLanguage();
-			return;
+			String message = "Invalid config.yml setting 'language': '" + configuredLanguage + "'.";
+			if (strict) {
+				throw new IllegalStateException(message);
+			}
+			plugin.getLogger().warning(message + " Using " + DEFAULT_LANGUAGE + ".");
+			normalizedLanguage = DEFAULT_LANGUAGE;
 		}
 
+		YamlConfiguration bundledFallback = loadBundledLanguageFile(DEFAULT_LANGUAGE, strict);
+		YamlConfiguration diskFallback = loadLanguageFile(DEFAULT_LANGUAGE, strict);
+		YamlConfiguration fallback = diskFallback == null ? new YamlConfiguration() : diskFallback;
 		if (normalizedLanguage.equals(DEFAULT_LANGUAGE)) {
-			useFallbackLanguage();
-			return;
+			return new LanguageConfiguration(DEFAULT_LANGUAGE, fallback, fallback, bundledFallback, bundledFallback);
 		}
 
-		YamlConfiguration selectedLanguage = tryLoadLanguageFile(normalizedLanguage);
+		YamlConfiguration selectedLanguage = loadLanguageFile(normalizedLanguage, strict);
 		if (selectedLanguage == null) {
-			plugin.getLogger().warning(
-					"Could not use language '" + normalizedLanguage + "'. Using " + DEFAULT_LANGUAGE + "."
-			);
-			useFallbackLanguage();
-			return;
+			return new LanguageConfiguration(DEFAULT_LANGUAGE, fallback, fallback, bundledFallback, bundledFallback);
 		}
 
-		currentLanguage = selectedLanguage;
-		bundledCurrentLanguage = BUNDLED_LANGUAGES.contains(normalizedLanguage)
-				? loadBundledLanguageFile(normalizedLanguage)
+		YamlConfiguration bundledSelected = BUNDLED_LANGUAGES.contains(normalizedLanguage)
+				? loadBundledLanguageFile(normalizedLanguage, strict)
 				: new YamlConfiguration();
-		currentLanguageName = normalizedLanguage;
+		return new LanguageConfiguration(normalizedLanguage, selectedLanguage, fallback, bundledSelected, bundledFallback);
+	}
+
+	public void applyConfiguration(LanguageConfiguration configuration) {
+		currentLanguageName = configuration.languageName;
+		currentLanguage = configuration.current;
+		fallbackLanguage = configuration.fallback;
+		bundledCurrentLanguage = configuration.bundledCurrent;
+		bundledFallbackLanguage = configuration.bundledFallback;
+		warnedMissingKeys.clear();
 	}
 
 	public Component getMessage(String key) {
@@ -218,50 +228,56 @@ public final class LanguageManager {
 		}
 	}
 
-	private YamlConfiguration loadLanguageFile(String languageName) {
-		YamlConfiguration loadedLanguage = tryLoadLanguageFile(languageName);
-		return loadedLanguage == null ? new YamlConfiguration() : loadedLanguage;
-	}
-
-	private YamlConfiguration loadBundledLanguageFile(String languageName) {
+	private YamlConfiguration loadBundledLanguageFile(String languageName, boolean strict) {
 		String resourcePath = LANGUAGE_FOLDER + "/" + languageName + ".yml";
 		try (InputStream inputStream = plugin.getResource(resourcePath)) {
 			if (inputStream == null) {
-				plugin.getLogger().warning("Could not find bundled language resource " + resourcePath + ".");
-				return new YamlConfiguration();
+				throw new IOException("Bundled language resource is missing.");
 			}
 
 			InputStreamReader reader = new InputStreamReader(inputStream, StandardCharsets.UTF_8);
-			return YamlConfiguration.loadConfiguration(reader);
-		} catch (IOException exception) {
-			plugin.getLogger().log(
-					Level.WARNING,
-					"Could not read bundled language resource " + resourcePath + ".",
-					exception
-			);
+			YamlConfiguration language = new YamlConfiguration();
+			language.load(reader);
+			return language;
+		} catch (IOException | InvalidConfigurationException exception) {
+			String message = "Could not load bundled language resource " + resourcePath + ".";
+			if (strict) {
+				throw new IllegalStateException(message, exception);
+			}
+			plugin.getLogger().log(Level.WARNING, message, exception);
 			return new YamlConfiguration();
 		}
 	}
 
-	private YamlConfiguration tryLoadLanguageFile(String languageName) {
+	private YamlConfiguration loadLanguageFile(String languageName, boolean strict) {
 		File languageFile = getLanguageFile(languageName);
-		if (!languageFile.isFile()) {
-			plugin.getLogger().warning("Could not find language file " + languageFile.getPath() + ".");
-			return null;
+		if (!languageFile.exists() && BUNDLED_LANGUAGES.contains(languageName)) {
+			return new YamlConfiguration();
 		}
 
 		YamlConfiguration loadedLanguage = new YamlConfiguration();
 		try {
 			loadedLanguage.load(languageFile);
-			return loadedLanguage;
 		} catch (IOException | InvalidConfigurationException exception) {
-			plugin.getLogger().log(
-					Level.WARNING,
-					"Could not load language file " + languageFile.getPath() + ".",
-					exception
-			);
+			String message = "Could not load language file " + LANGUAGE_FOLDER + "/" + languageFile.getName() + ".";
+			if (strict) {
+				throw new IllegalStateException(message, exception);
+			}
+			plugin.getLogger().log(Level.WARNING, message, exception);
 			return null;
 		}
+
+		if (strict) {
+			for (Map.Entry<String, Object> entry : loadedLanguage.getValues(true).entrySet()) {
+				if (!(entry.getValue() instanceof String || entry.getValue() instanceof ConfigurationSection)) {
+					throw new IllegalStateException(
+							"Invalid " + LANGUAGE_FOLDER + "/" + languageFile.getName()
+									+ ": '" + entry.getKey() + "' must be text."
+					);
+				}
+			}
+		}
+		return loadedLanguage;
 	}
 
 	private File getLanguageFile(String languageName) {
@@ -269,9 +285,25 @@ public final class LanguageManager {
 		return new File(languageFolder, languageName + ".yml");
 	}
 
-	private void useFallbackLanguage() {
-		currentLanguage = fallbackLanguage;
-		bundledCurrentLanguage = bundledFallbackLanguage;
-		currentLanguageName = DEFAULT_LANGUAGE;
+	public static final class LanguageConfiguration {
+		private final String languageName;
+		private final YamlConfiguration current;
+		private final YamlConfiguration fallback;
+		private final YamlConfiguration bundledCurrent;
+		private final YamlConfiguration bundledFallback;
+
+		private LanguageConfiguration(
+				String languageName,
+				YamlConfiguration current,
+				YamlConfiguration fallback,
+				YamlConfiguration bundledCurrent,
+				YamlConfiguration bundledFallback
+		) {
+			this.languageName = languageName;
+			this.current = current;
+			this.fallback = fallback;
+			this.bundledCurrent = bundledCurrent;
+			this.bundledFallback = bundledFallback;
+		}
 	}
 }

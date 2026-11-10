@@ -16,6 +16,7 @@ import basementhost.randomchad.data.PlayerLifecycleSettings;
 import basementhost.randomchad.data.RespawnLifecycleSettings;
 import basementhost.randomchad.data.StarvationDamageRule;
 import basementhost.randomchad.data.StarvationDamageSettings;
+import basementhost.randomchad.data.StatusEffectsConfiguration;
 import basementhost.randomchad.data.StorageSettings;
 import basementhost.randomchad.data.VanillaHungerSettings;
 import basementhost.randomchad.data.WorldChangeLifecycleSettings;
@@ -44,17 +45,24 @@ import basementhost.randomchad.manager.StarvationDamageManager;
 import basementhost.randomchad.manager.ValueDecayManager;
 import basementhost.randomchad.manager.VanillaHungerManager;
 import basementhost.randomchad.storage.FilePlayerDataStorage;
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.io.File;
+import java.io.IOException;
+import java.io.Reader;
 import java.math.BigDecimal;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.logging.Level;
 
 public final class HungerOverhaul extends JavaPlugin {
+	private FileConfiguration activeConfiguration;
 	private LanguageManager languageManager;
 	private GroupManager groupManager;
 	private FoodManager foodManager;
@@ -78,7 +86,7 @@ public final class HungerOverhaul extends JavaPlugin {
 		saveDefaultConfig();
 		languageManager = new LanguageManager(this);
 		reloadConfig();
-		languageManager.reload();
+		languageManager.loadInitialConfiguration();
 
 		groupManager = new GroupManager(this);
 		if (!loadGroupSettingsAtStartup()) {
@@ -209,45 +217,113 @@ public final class HungerOverhaul extends JavaPlugin {
 		return playerLifecycleManager;
 	}
 
-	public boolean reloadPluginSettings() {
-		reloadConfig();
-		languageManager.reload();
+	@Override
+	public FileConfiguration getConfig() {
+		return activeConfiguration == null ? super.getConfig() : activeConfiguration;
+	}
 
+	@Override
+	public void reloadConfig() {
+		super.reloadConfig();
+		activeConfiguration = super.getConfig();
+	}
+
+	public ReloadResult reloadPluginSettings() {
+		PreparedReload prepared;
 		try {
-			StorageSettings storageSettings = readStorageSettings();
-			VanillaHungerSettings vanillaHungerSettings = readVanillaHungerSettings();
-			DecaySettings decaySettings = readDecaySettings();
-			LowValueWarningSettings warningSettings = readLowValueWarningSettings();
-			StarvationDamageSettings starvationSettings = readStarvationDamageSettings();
-			HealthRegenerationSettings healthRegenerationSettings = readHealthRegenerationSettings();
-			EatingSettings eatingSettings = readEatingSettings();
-			PlayerLifecycleSettings playerLifecycleSettings = readPlayerLifecycleSettings();
-			foodManager.validateConfiguration();
-			groupManager.reload();
-			statusEffectManager.reload();
-			foodManager.reload();
-			persistenceManager.updateSettings(storageSettings);
-			refreshOnlinePlayerGroups();
-			vanillaHungerManager.updateSettings(vanillaHungerSettings);
-			valueDecayManager.updateSettings(decaySettings);
-			actionDecayManager.updateSettings(decaySettings);
-			lowValueWarningManager.updateSettings(warningSettings);
-			starvationDamageManager.updateSettings(starvationSettings);
-			healthRegenerationManager.updateSettings(healthRegenerationSettings);
-			eatingManager.updateSettings(eatingSettings);
-			statusAttributeManager.reload();
-			persistenceManager.saveAllLoadedPlayerData();
-			playerLifecycleManager.updateSettings(playerLifecycleSettings);
-			eatingManager.handleSuccessfulReload();
-			return true;
+			prepared = prepareReload();
 		} catch (RuntimeException exception) {
 			getLogger().log(
-					Level.SEVERE,
-					"Could not reload HungerOverhaul settings. Previous valid runtime settings remain active.",
+					Level.WARNING,
+					"Rejected HungerOverhaul configuration reload. The active settings were kept.",
 					exception
 			);
-			return false;
+			return new ReloadResult(ReloadResult.Status.REJECTED, describeFailure(exception));
 		}
+
+		try {
+			applyReload(prepared);
+		} catch (RuntimeException exception) {
+			getLogger().log(Level.SEVERE, "Could not activate validated HungerOverhaul settings.", exception);
+			return new ReloadResult(ReloadResult.Status.ACTIVATION_FAILED, describeFailure(exception));
+		}
+		return new ReloadResult(ReloadResult.Status.SUCCESS, "");
+	}
+
+	// Reads each file once and leaves active settings and scheduled work untouched.
+	private PreparedReload prepareReload() {
+		MainSettings main = readMainSettings();
+		return new PreparedReload(
+				main,
+				groupManager.readConfiguration(),
+				statusEffectManager.readConfiguration(),
+				foodManager.readConfiguration(),
+				languageManager.readConfiguration(main.language())
+		);
+	}
+
+	private MainSettings readMainSettings() {
+		YamlConfiguration configuration = new YamlConfiguration();
+		try {
+			configuration.load(new File(getDataFolder(), "config.yml"));
+		} catch (IOException | InvalidConfigurationException exception) {
+			throw new IllegalStateException("Could not load config.yml.", exception);
+		}
+
+		try (Reader resource = getTextResource("config.yml")) {
+			if (resource == null) {
+				throw new IOException("Bundled resource is missing.");
+			}
+			YamlConfiguration defaults = new YamlConfiguration();
+			defaults.load(resource);
+			configuration.setDefaults(defaults);
+		} catch (IOException | InvalidConfigurationException exception) {
+			throw new IllegalStateException("Could not load the bundled defaults for config.yml.", exception);
+		}
+
+		try {
+			return new MainSettings(
+					configuration,
+					readStringSetting(configuration, "language", "en_us"),
+					readStorageSettings(configuration),
+					readVanillaHungerSettings(configuration),
+					readDecaySettings(configuration),
+					readLowValueWarningSettings(configuration),
+					readStarvationDamageSettings(configuration),
+					readHealthRegenerationSettings(configuration),
+					readEatingSettings(configuration),
+					readPlayerLifecycleSettings(configuration)
+			);
+		} catch (IllegalStateException exception) {
+			throw new IllegalStateException("Invalid config.yml: " + exception.getMessage(), exception);
+		}
+	}
+
+	private void applyReload(PreparedReload prepared) {
+		MainSettings main = prepared.main();
+		activeConfiguration = main.configuration();
+		groupManager.applyConfiguration(prepared.groups());
+		statusEffectManager.applyConfiguration(prepared.statusEffects());
+		foodManager.applyConfiguration(prepared.foods());
+		languageManager.applyConfiguration(prepared.language());
+
+		persistenceManager.updateSettings(main.storage());
+		refreshOnlinePlayerGroups();
+		vanillaHungerManager.updateSettings(main.vanillaHunger());
+		valueDecayManager.updateSettings(main.decay());
+		actionDecayManager.updateSettings(main.decay());
+		lowValueWarningManager.updateSettings(main.lowValueWarnings());
+		starvationDamageManager.updateSettings(main.starvationDamage());
+		healthRegenerationManager.updateSettings(main.healthRegeneration());
+		eatingManager.updateSettings(main.eating());
+		playerLifecycleManager.updateSettings(main.playerLifecycle());
+		statusAttributeManager.reload();
+		persistenceManager.saveAllLoadedPlayerData();
+		eatingManager.handleSuccessfulReload();
+	}
+
+	private static String describeFailure(RuntimeException exception) {
+		return Objects.toString(exception.getMessage(), exception.getClass().getSimpleName());
 	}
 
 	private void registerCommands() {
@@ -290,7 +366,7 @@ public final class HungerOverhaul extends JavaPlugin {
 
 	private boolean loadGroupSettingsAtStartup() {
 		try {
-			groupManager.reload();
+			groupManager.loadInitialConfiguration();
 			return true;
 		} catch (RuntimeException exception) {
 			getLogger().log(
@@ -305,7 +381,7 @@ public final class HungerOverhaul extends JavaPlugin {
 
 	private boolean loadFoodSettingsAtStartup() {
 		try {
-			foodManager.reload();
+			foodManager.loadInitialConfiguration();
 			return true;
 		} catch (RuntimeException exception) {
 			getLogger().log(
@@ -320,7 +396,7 @@ public final class HungerOverhaul extends JavaPlugin {
 
 	private boolean loadStatusEffectsAtStartup() {
 		try {
-			statusEffectManager.reload();
+			statusEffectManager.loadInitialConfiguration();
 			return true;
 		} catch (RuntimeException exception) {
 			getLogger().log(
@@ -335,7 +411,7 @@ public final class HungerOverhaul extends JavaPlugin {
 
 	private boolean startPlayerDataSystem() {
 		try {
-			StorageSettings storageSettings = readStorageSettings();
+			StorageSettings storageSettings = readStorageSettings(getConfig());
 			playerDataManager = new PlayerDataManager(groupManager);
 			Path playerDataDirectory = getDataFolder().toPath().resolve("data");
 			FilePlayerDataStorage storage = new FilePlayerDataStorage(playerDataDirectory);
@@ -361,7 +437,7 @@ public final class HungerOverhaul extends JavaPlugin {
 
 	private boolean startEatingSystem() {
 		try {
-			EatingSettings settings = readEatingSettings();
+			EatingSettings settings = readEatingSettings(getConfig());
 			eatingManager = new EatingManager(this, groupManager, playerDataManager, settings);
 			FoodConsumptionManager foodConsumptionManager = new FoodConsumptionManager(this, eatingManager);
 			getServer().getPluginManager().registerEvents(
@@ -391,7 +467,7 @@ public final class HungerOverhaul extends JavaPlugin {
 
 	private boolean startPlayerLifecycleSystem() {
 		try {
-			PlayerLifecycleSettings settings = readPlayerLifecycleSettings();
+			PlayerLifecycleSettings settings = readPlayerLifecycleSettings(getConfig());
 			playerLifecycleManager = new PlayerLifecycleManager(
 					groupManager,
 					playerDataManager,
@@ -417,7 +493,7 @@ public final class HungerOverhaul extends JavaPlugin {
 
 	private boolean startVanillaHungerSystem() {
 		try {
-			VanillaHungerSettings settings = readVanillaHungerSettings();
+			VanillaHungerSettings settings = readVanillaHungerSettings(getConfig());
 			vanillaHungerManager = new VanillaHungerManager(this, playerDataManager, settings);
 			getServer().getPluginManager().registerEvents(
 					new VanillaHungerListener(vanillaHungerManager),
@@ -438,7 +514,7 @@ public final class HungerOverhaul extends JavaPlugin {
 
 	private boolean startValueDecaySystem() {
 		try {
-			DecaySettings settings = readDecaySettings();
+			DecaySettings settings = readDecaySettings(getConfig());
 			valueDecayManager = new ValueDecayManager(
 					this,
 					groupManager,
@@ -490,7 +566,7 @@ public final class HungerOverhaul extends JavaPlugin {
 
 	private boolean startLowValueWarningSystem() {
 		try {
-			LowValueWarningSettings settings = readLowValueWarningSettings();
+			LowValueWarningSettings settings = readLowValueWarningSettings(getConfig());
 			lowValueWarningManager = new LowValueWarningManager(this, playerDataManager, settings);
 			lowValueWarningManager.start();
 			return true;
@@ -507,7 +583,7 @@ public final class HungerOverhaul extends JavaPlugin {
 
 	private boolean startStarvationDamageSystem() {
 		try {
-			StarvationDamageSettings settings = readStarvationDamageSettings();
+			StarvationDamageSettings settings = readStarvationDamageSettings(getConfig());
 			starvationDamageManager = new StarvationDamageManager(
 					this,
 					playerDataManager,
@@ -529,7 +605,7 @@ public final class HungerOverhaul extends JavaPlugin {
 
 	private boolean startHealthRegenerationSystem() {
 		try {
-			HealthRegenerationSettings settings = readHealthRegenerationSettings();
+			HealthRegenerationSettings settings = readHealthRegenerationSettings(getConfig());
 			healthRegenerationManager = new HealthRegenerationManager(
 					this,
 					groupManager,
@@ -550,10 +626,10 @@ public final class HungerOverhaul extends JavaPlugin {
 		}
 	}
 
-	private StorageSettings readStorageSettings() {
-		boolean autosaveEnabled = readBooleanSetting("storage.autosave.enabled", true);
-		long autosaveInterval = readLongSetting("storage.autosave.interval-seconds", 300L);
-		long cacheTtl = readLongSetting("storage.cache-ttl-seconds", 300L);
+	private StorageSettings readStorageSettings(FileConfiguration configuration) {
+		boolean autosaveEnabled = readBooleanSetting(configuration, "storage.autosave.enabled", true);
+		long autosaveInterval = readLongSetting(configuration, "storage.autosave.interval-seconds", 300L);
+		long cacheTtl = readLongSetting(configuration, "storage.cache-ttl-seconds", 300L);
 
 		try {
 			return new StorageSettings(autosaveEnabled, autosaveInterval, cacheTtl);
@@ -562,10 +638,10 @@ public final class HungerOverhaul extends JavaPlugin {
 		}
 	}
 
-	private DecaySettings readDecaySettings() {
-		boolean enabled = readBooleanSetting("value-decay.enabled", true);
-		long intervalTicks = readLongSetting("value-decay.interval-ticks", 20L);
-		boolean actionCostsEnabled = readBooleanSetting("value-decay.action-costs.enabled", true);
+	private DecaySettings readDecaySettings(FileConfiguration configuration) {
+		boolean enabled = readBooleanSetting(configuration, "value-decay.enabled", true);
+		long intervalTicks = readLongSetting(configuration, "value-decay.interval-ticks", 20L);
+		boolean actionCostsEnabled = readBooleanSetting(configuration, "value-decay.action-costs.enabled", true);
 
 		try {
 			return new DecaySettings(enabled, intervalTicks, actionCostsEnabled);
@@ -574,17 +650,19 @@ public final class HungerOverhaul extends JavaPlugin {
 		}
 	}
 
-	private LowValueWarningSettings readLowValueWarningSettings() {
-		boolean enabled = readBooleanSetting("low-value-warnings.enabled", true);
-		long checkIntervalTicks = readLongSetting("low-value-warnings.check-interval-ticks", 20L);
-		long repeatIntervalSeconds = readLongSetting("low-value-warnings.repeat-interval-seconds", 30L);
-		boolean nutritionEnabled = readBooleanSetting("low-value-warnings.nutrition.enabled", true);
+	private LowValueWarningSettings readLowValueWarningSettings(FileConfiguration configuration) {
+		boolean enabled = readBooleanSetting(configuration, "low-value-warnings.enabled", true);
+		long checkIntervalTicks = readLongSetting(configuration, "low-value-warnings.check-interval-ticks", 20L);
+		long repeatIntervalSeconds = readLongSetting(configuration, "low-value-warnings.repeat-interval-seconds", 30L);
+		boolean nutritionEnabled = readBooleanSetting(configuration, "low-value-warnings.nutrition.enabled", true);
 		double nutritionThreshold = readDoubleSetting(
+				configuration,
 				"low-value-warnings.nutrition.threshold-percentage",
 				20.0
 		);
-		boolean fullnessEnabled = readBooleanSetting("low-value-warnings.fullness.enabled", true);
+		boolean fullnessEnabled = readBooleanSetting(configuration, "low-value-warnings.fullness.enabled", true);
 		double fullnessThreshold = readDoubleSetting(
+				configuration,
 				"low-value-warnings.fullness.threshold-percentage",
 				20.0
 		);
@@ -604,20 +682,23 @@ public final class HungerOverhaul extends JavaPlugin {
 		}
 	}
 
-	private StarvationDamageSettings readStarvationDamageSettings() {
-		boolean enabled = readBooleanSetting("starvation-damage.enabled", true);
-		long checkIntervalTicks = readLongSetting("starvation-damage.check-interval-ticks", 20L);
-		boolean damageInPeaceful = readBooleanSetting("starvation-damage.damage-in-peaceful", false);
+	private StarvationDamageSettings readStarvationDamageSettings(FileConfiguration configuration) {
+		boolean enabled = readBooleanSetting(configuration, "starvation-damage.enabled", true);
+		long checkIntervalTicks = readLongSetting(configuration, "starvation-damage.check-interval-ticks", 20L);
+		boolean damageInPeaceful = readBooleanSetting(configuration, "starvation-damage.damage-in-peaceful", false);
 		double criticalMaximumPercentage = readDoubleSetting(
+				configuration,
 				"starvation-damage.critical.maximum-fullness-percentage",
 				10.0
 		);
 		StarvationDamageRule criticalRule = readStarvationDamageRule(
+				configuration,
 				"starvation-damage.critical",
 				200L,
 				1.0
 		);
 		StarvationDamageRule emptyRule = readStarvationDamageRule(
+				configuration,
 				"starvation-damage.empty",
 				40L,
 				1.0
@@ -637,10 +718,11 @@ public final class HungerOverhaul extends JavaPlugin {
 		}
 	}
 
-	private HealthRegenerationSettings readHealthRegenerationSettings() {
-		boolean enabled = readBooleanSetting("health-regeneration.enabled", true);
-		long intervalTicks = readLongSetting("health-regeneration.interval-ticks", 200L);
+	private HealthRegenerationSettings readHealthRegenerationSettings(FileConfiguration configuration) {
+		boolean enabled = readBooleanSetting(configuration, "health-regeneration.enabled", true);
+		long intervalTicks = readLongSetting(configuration, "health-regeneration.interval-ticks", 200L);
 		double minimumChargedHealHp = readDoubleSetting(
+				configuration,
 				"health-regeneration.minimum-charged-heal-hp",
 				0.5
 		);
@@ -655,18 +737,20 @@ public final class HungerOverhaul extends JavaPlugin {
 		}
 	}
 
-	private PlayerLifecycleSettings readPlayerLifecycleSettings() {
+	private PlayerLifecycleSettings readPlayerLifecycleSettings(FileConfiguration configuration) {
 		DeathLifecycleSettings deathSettings = new DeathLifecycleSettings(
-				readBooleanSetting("player-lifecycle.death.cancel-eating", true),
-				readBooleanSetting("player-lifecycle.death.preserve-digestion-cooldown", true),
-				readBooleanSetting("player-lifecycle.death.save-data", true)
+				readBooleanSetting(configuration, "player-lifecycle.death.cancel-eating", true),
+				readBooleanSetting(configuration, "player-lifecycle.death.preserve-digestion-cooldown", true),
+				readBooleanSetting(configuration, "player-lifecycle.death.save-data", true)
 		);
 		LifecycleValueRule respawnNutritionRule = readLifecycleValueRule(
+				configuration,
 				"player-lifecycle.respawn.nutrition",
 				"minimum-percentage",
 				20.0
 		);
 		LifecycleValueRule respawnFullnessRule = readLifecycleValueRule(
+				configuration,
 				"player-lifecycle.respawn.fullness",
 				"minimum-percentage",
 				20.0
@@ -674,46 +758,50 @@ public final class HungerOverhaul extends JavaPlugin {
 		RespawnLifecycleSettings respawnSettings = new RespawnLifecycleSettings(
 				respawnNutritionRule,
 				respawnFullnessRule,
-				readBooleanSetting("player-lifecycle.respawn.affect-frozen-values", false),
-				readBooleanSetting("player-lifecycle.respawn.save-data", true)
+				readBooleanSetting(configuration, "player-lifecycle.respawn.affect-frozen-values", false),
+				readBooleanSetting(configuration, "player-lifecycle.respawn.save-data", true)
 		);
 		LifecycleValueRule worldNutritionRule = readLifecycleValueRule(
+				configuration,
 				"player-lifecycle.world-change.nutrition",
 				"preserve-percentage",
 				0.0
 		);
 		LifecycleValueRule worldFullnessRule = readLifecycleValueRule(
+				configuration,
 				"player-lifecycle.world-change.fullness",
 				"preserve-percentage",
 				0.0
 		);
 		WorldChangeLifecycleSettings worldChangeSettings = new WorldChangeLifecycleSettings(
-				readBooleanSetting("player-lifecycle.world-change.cancel-eating", true),
+				readBooleanSetting(configuration, "player-lifecycle.world-change.cancel-eating", true),
 				readBooleanSetting(
+						configuration,
 						"player-lifecycle.world-change.preserve-digestion-cooldown",
 						true
 				),
-				readBooleanSetting("player-lifecycle.world-change.refresh-group", true),
+				readBooleanSetting(configuration, "player-lifecycle.world-change.refresh-group", true),
 				worldNutritionRule,
 				worldFullnessRule,
-				readBooleanSetting("player-lifecycle.world-change.affect-frozen-values", false),
-				readBooleanSetting("player-lifecycle.world-change.save-data", true)
+				readBooleanSetting(configuration, "player-lifecycle.world-change.affect-frozen-values", false),
+				readBooleanSetting(configuration, "player-lifecycle.world-change.save-data", true)
 		);
 
 		return new PlayerLifecycleSettings(deathSettings, respawnSettings, worldChangeSettings);
 	}
 
 	private LifecycleValueRule readLifecycleValueRule(
+			FileConfiguration configuration,
 			String path,
 			String fallbackMode,
 			double fallbackPercentage
 	) {
-		String configuredMode = readStringSetting(path + ".mode", fallbackMode);
+		String configuredMode = readStringSetting(configuration, path + ".mode", fallbackMode);
 
 		try {
 			LifecycleValueMode mode = LifecycleValueMode.fromConfigValue(configuredMode);
 			Double percentage = mode.requiresPercentage()
-					? readDoubleSetting(path + ".percentage", fallbackPercentage)
+					? readDoubleSetting(configuration, path + ".percentage", fallbackPercentage)
 					: null;
 			return new LifecycleValueRule(mode, percentage);
 		} catch (IllegalArgumentException exception) {
@@ -724,36 +812,43 @@ public final class HungerOverhaul extends JavaPlugin {
 		}
 	}
 
-	private EatingSettings readEatingSettings() {
-		String configuredOverflowPolicy = readStringSetting("eating.overflow-policy", "deny");
-		long cooldownTicks = readLongSetting("eating.cooldown-ticks", 40L);
+	private EatingSettings readEatingSettings(FileConfiguration configuration) {
+		String configuredOverflowPolicy = readStringSetting(configuration, "eating.overflow-policy", "deny");
+		long cooldownTicks = readLongSetting(configuration, "eating.cooldown-ticks", 40L);
 		boolean progressActionBarEnabled = readBooleanSetting(
+				configuration,
 				"eating.feedback.progress-actionbar",
 				true
 		);
 		long progressUpdateIntervalTicks = readLongSetting(
+				configuration,
 				"eating.feedback.progress-update-interval-ticks",
 				10L
 		);
 		boolean completionActionBarEnabled = readBooleanSetting(
+				configuration,
 				"eating.feedback.completion-actionbar",
 				true
 		);
 		boolean interruptionActionBarEnabled = readBooleanSetting(
+				configuration,
 				"eating.feedback.interruption-actionbar",
 				true
 		);
 		long blockedMessageIntervalTicks = readLongSetting(
+				configuration,
 				"eating.feedback.blocked-message-interval-ticks",
 				40L
 		);
 		long postConsumptionSilentTicks = readLongSetting(
+				configuration,
 				"eating.feedback.post-consumption-silent-ticks",
 				10L
 		);
-		boolean interruptOnDamage = readBooleanSetting("eating.interrupt.on-damage", true);
-		boolean interruptOnMove = readBooleanSetting("eating.interrupt.on-move", false);
+		boolean interruptOnDamage = readBooleanSetting(configuration, "eating.interrupt.on-damage", true);
+		boolean interruptOnMove = readBooleanSetting(configuration, "eating.interrupt.on-move", false);
 		boolean interruptOnSneakToggle = readBooleanSetting(
+				configuration,
 				"eating.interrupt.on-sneak-toggle",
 				false
 		);
@@ -785,13 +880,14 @@ public final class HungerOverhaul extends JavaPlugin {
 	}
 
 	private StarvationDamageRule readStarvationDamageRule(
+			FileConfiguration configuration,
 			String path,
 			long fallbackIntervalTicks,
 			double fallbackDamageHp
 	) {
-		boolean enabled = readBooleanSetting(path + ".enabled", true);
-		long intervalTicks = readLongSetting(path + ".interval-ticks", fallbackIntervalTicks);
-		double damageHp = readDoubleSetting(path + ".damage-hp", fallbackDamageHp);
+		boolean enabled = readBooleanSetting(configuration, path + ".enabled", true);
+		long intervalTicks = readLongSetting(configuration, path + ".interval-ticks", fallbackIntervalTicks);
+		double damageHp = readDoubleSetting(configuration, path + ".damage-hp", fallbackDamageHp);
 
 		try {
 			return new StarvationDamageRule(enabled, intervalTicks, damageHp);
@@ -803,11 +899,12 @@ public final class HungerOverhaul extends JavaPlugin {
 		}
 	}
 
-	private VanillaHungerSettings readVanillaHungerSettings() {
-		String configuredSource = readStringSetting("vanilla-hunger.display.source", "fullness");
-		int minimumFoodLevel = readIntegerSetting("vanilla-hunger.display.minimum-food-level", 1);
-		int maximumFoodLevel = readIntegerSetting("vanilla-hunger.display.maximum-food-level", 20);
+	private VanillaHungerSettings readVanillaHungerSettings(FileConfiguration configuration) {
+		String configuredSource = readStringSetting(configuration, "vanilla-hunger.display.source", "fullness");
+		int minimumFoodLevel = readIntegerSetting(configuration, "vanilla-hunger.display.minimum-food-level", 1);
+		int maximumFoodLevel = readIntegerSetting(configuration, "vanilla-hunger.display.maximum-food-level", 20);
 		boolean blockNaturalRegeneration = readBooleanSetting(
+				configuration,
 				"vanilla-hunger.block-natural-regeneration",
 				true
 		);
@@ -829,9 +926,8 @@ public final class HungerOverhaul extends JavaPlugin {
 		}
 	}
 
-	private boolean readBooleanSetting(String path, boolean fallback) {
-		FileConfiguration configuration = getConfig();
-		Object configuredValue = configuration.get(path);
+	private boolean readBooleanSetting(FileConfiguration configuration, String path, boolean fallback) {
+		Object configuredValue = readConfiguredValue(configuration, path);
 		if (configuredValue == null) {
 			return fallback;
 		}
@@ -843,8 +939,8 @@ public final class HungerOverhaul extends JavaPlugin {
 		return booleanValue;
 	}
 
-	private String readStringSetting(String path, String fallback) {
-		Object configuredValue = getConfig().get(path);
+	private String readStringSetting(FileConfiguration configuration, String path, String fallback) {
+		Object configuredValue = readConfiguredValue(configuration, path);
 		if (configuredValue == null) {
 			return fallback;
 		}
@@ -856,8 +952,8 @@ public final class HungerOverhaul extends JavaPlugin {
 		return stringValue;
 	}
 
-	private int readIntegerSetting(String path, int fallback) {
-		Object configuredValue = getConfig().get(path);
+	private int readIntegerSetting(FileConfiguration configuration, String path, int fallback) {
+		Object configuredValue = readConfiguredValue(configuration, path);
 		if (configuredValue == null) {
 			return fallback;
 		}
@@ -876,8 +972,8 @@ public final class HungerOverhaul extends JavaPlugin {
 		}
 	}
 
-	private double readDoubleSetting(String path, double fallback) {
-		Object configuredValue = getConfig().get(path);
+	private double readDoubleSetting(FileConfiguration configuration, String path, double fallback) {
+		Object configuredValue = readConfiguredValue(configuration, path);
 		if (configuredValue == null) {
 			return fallback;
 		}
@@ -889,8 +985,8 @@ public final class HungerOverhaul extends JavaPlugin {
 		return number.doubleValue();
 	}
 
-	private long readLongSetting(String path, long fallback) {
-		Object configuredValue = getConfig().get(path);
+	private long readLongSetting(FileConfiguration configuration, String path, long fallback) {
+		Object configuredValue = readConfiguredValue(configuration, path);
 		if (configuredValue == null) {
 			return fallback;
 		}
@@ -909,9 +1005,53 @@ public final class HungerOverhaul extends JavaPlugin {
 		}
 	}
 
+	private Object readConfiguredValue(FileConfiguration configuration, String path) {
+		int separator = path.indexOf('.');
+		while (separator >= 0) {
+			String sectionPath = path.substring(0, separator);
+			Object section = configuration.get(sectionPath);
+			if (section != null && !(section instanceof ConfigurationSection)) {
+				throw new IllegalStateException("Configuration value '" + sectionPath + "' must be a section.");
+			}
+			separator = path.indexOf('.', separator + 1);
+		}
+		return configuration.get(path);
+	}
+
 	private void refreshOnlinePlayerGroups() {
 		for (Player player : getServer().getOnlinePlayers()) {
 			playerDataManager.refreshGroupSettings(player);
 		}
+	}
+
+	public record ReloadResult(Status status, String reason) {
+		public enum Status {
+			SUCCESS,
+			REJECTED,
+			ACTIVATION_FAILED
+		}
+	}
+
+	private record PreparedReload(
+			MainSettings main,
+			GroupManager.ParsedGroups groups,
+			StatusEffectsConfiguration statusEffects,
+			FoodManager.ParsedFoodConfiguration foods,
+			LanguageManager.LanguageConfiguration language
+	) {
+	}
+
+	private record MainSettings(
+			FileConfiguration configuration,
+			String language,
+			StorageSettings storage,
+			VanillaHungerSettings vanillaHunger,
+			DecaySettings decay,
+			LowValueWarningSettings lowValueWarnings,
+			StarvationDamageSettings starvationDamage,
+			HealthRegenerationSettings healthRegeneration,
+			EatingSettings eating,
+			PlayerLifecycleSettings playerLifecycle
+	) {
 	}
 }
