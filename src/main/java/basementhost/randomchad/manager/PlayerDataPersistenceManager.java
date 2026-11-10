@@ -1,9 +1,11 @@
 package basementhost.randomchad.manager;
 
 import basementhost.randomchad.HungerOverhaul;
+import basementhost.randomchad.data.AdminAuditEntry;
 import basementhost.randomchad.data.PlayerData;
 import basementhost.randomchad.data.StorageSettings;
 import basementhost.randomchad.data.StoredPlayerData;
+import basementhost.randomchad.storage.AdminAuditLog;
 import basementhost.randomchad.storage.CorruptPlayerDataException;
 import basementhost.randomchad.storage.OfflinePlayerDataUpdateResult;
 import basementhost.randomchad.storage.PlayerDataStorage;
@@ -36,6 +38,7 @@ public final class PlayerDataPersistenceManager {
 	private final HungerOverhaul plugin;
 	private final PlayerDataManager playerDataManager;
 	private final PlayerDataStorage storage;
+	private final AdminAuditLog adminAuditLog;
 	private final ExecutorService storageExecutor;
 	private final Set<UUID> loadingPlayerIds = new HashSet<>();
 	private final Map<UUID, String> lastKnownNames = new HashMap<>();
@@ -58,6 +61,10 @@ public final class PlayerDataPersistenceManager {
 		this.playerDataManager = Objects.requireNonNull(playerDataManager, "playerDataManager");
 		this.storage = Objects.requireNonNull(storage, "storage");
 		this.settings = Objects.requireNonNull(settings, "settings");
+		this.adminAuditLog = new AdminAuditLog(
+				plugin.getDataFolder().toPath().resolve("admin-audit.log"),
+				plugin.getLogger()
+		);
 		this.storageExecutor = Executors.newSingleThreadExecutor(task -> {
 			Thread storageThread = new Thread(task, "HungerOverhaul-PlayerData");
 			storageThread.setDaemon(true);
@@ -154,9 +161,13 @@ public final class PlayerDataPersistenceManager {
 		return true;
 	}
 
-	// Saves an already-modified offline TTL cache entry and reports the disk result on the server thread.
-	public boolean saveCachedOfflinePlayerData(UUID playerId, Consumer<Boolean> resultHandler) {
-		Objects.requireNonNull(playerId, "playerId");
+	public void recordOnlineAdminChange(AdminAuditEntry auditEntry) {
+		submitStorageTask(() -> adminAuditLog.append(auditEntry, AdminAuditEntry.Outcome.APPLIED));
+	}
+
+	// Records the result of saving a change already applied to the offline TTL cache.
+	public boolean saveCachedOfflinePlayerData(AdminAuditEntry auditEntry, Consumer<Boolean> resultHandler) {
+		UUID playerId = auditEntry.playerId();
 		Objects.requireNonNull(resultHandler, "resultHandler");
 		PlayerData playerData = playerDataManager.findPlayerData(playerId).orElse(null);
 		if (playerData == null) {
@@ -172,6 +183,7 @@ public final class PlayerDataPersistenceManager {
 		submitSave(
 				playerId,
 				createSnapshot(playerData, playerName, groupId, lastSeen),
+				auditEntry,
 				resultHandler
 		);
 		return true;
@@ -252,41 +264,32 @@ public final class PlayerDataPersistenceManager {
 	public void updateOfflinePlayerData(
 			UUID playerId,
 			UnaryOperator<StoredPlayerData> dataUpdater,
+			AdminAuditEntry.Action auditAction,
 			Consumer<OfflinePlayerDataUpdateResult> resultHandler
 	) {
 		Objects.requireNonNull(playerId, "playerId");
 		Objects.requireNonNull(dataUpdater, "dataUpdater");
+		Objects.requireNonNull(auditAction, "auditAction");
 		Objects.requireNonNull(resultHandler, "resultHandler");
-		submitOfflineUpdateTask(
-				() -> performOfflinePlayerDataUpdate(playerId, dataUpdater),
-				resultHandler
-		);
-	}
+		if (stopping) {
+			resultHandler.accept(OfflinePlayerDataUpdateResult.of(OfflinePlayerDataUpdateResult.Status.UNAVAILABLE));
+			return;
+		}
 
-	// Resolves an old player name and updates the matching file within the same storage task.
-	public void updateOfflinePlayerData(
-			String playerName,
-			UnaryOperator<StoredPlayerData> dataUpdater,
-			Consumer<OfflinePlayerDataUpdateResult> resultHandler
-	) {
-		Objects.requireNonNull(playerName, "playerName");
-		Objects.requireNonNull(dataUpdater, "dataUpdater");
-		Objects.requireNonNull(resultHandler, "resultHandler");
-		submitOfflineUpdateTask(() -> {
+		boolean queued = submitStorageTask(() -> {
+			OfflinePlayerDataUpdateResult result;
 			try {
-				Optional<UUID> playerId = storage.findPlayerIdByNameReadOnly(playerName);
-				return playerId.isEmpty()
-						? OfflinePlayerDataUpdateResult.of(OfflinePlayerDataUpdateResult.Status.NOT_FOUND)
-						: performOfflinePlayerDataUpdate(playerId.get(), dataUpdater);
-			} catch (PlayerDataStorageException exception) {
-				plugin.getLogger().log(
-						Level.WARNING,
-						"Could not resolve offline player data for update: " + playerName + ".",
-						exception
-				);
-				return OfflinePlayerDataUpdateResult.of(OfflinePlayerDataUpdateResult.Status.READ_FAILED);
+				result = performOfflinePlayerDataUpdate(playerId, dataUpdater, auditAction);
+			} catch (RuntimeException exception) {
+				plugin.getLogger().log(Level.SEVERE, "Could not complete an offline player data update.", exception);
+				result = OfflinePlayerDataUpdateResult.of(OfflinePlayerDataUpdateResult.Status.UNAVAILABLE);
 			}
-		}, resultHandler);
+			OfflinePlayerDataUpdateResult completedResult = result;
+			runOnServerThread(() -> resultHandler.accept(completedResult));
+		});
+		if (!queued) {
+			resultHandler.accept(OfflinePlayerDataUpdateResult.of(OfflinePlayerDataUpdateResult.Status.UNAVAILABLE));
+		}
 	}
 
 	public void shutdown() {
@@ -363,7 +366,8 @@ public final class PlayerDataPersistenceManager {
 
 	private OfflinePlayerDataUpdateResult performOfflinePlayerDataUpdate(
 			UUID playerId,
-			UnaryOperator<StoredPlayerData> dataUpdater
+			UnaryOperator<StoredPlayerData> dataUpdater,
+			AdminAuditEntry.Action auditAction
 	) {
 		StoredPlayerData storedPlayerData;
 		try {
@@ -405,7 +409,6 @@ public final class PlayerDataPersistenceManager {
 
 		try {
 			storage.save(playerId, updatedPlayerData);
-			return OfflinePlayerDataUpdateResult.updated(playerId, updatedPlayerData);
 		} catch (PlayerDataStorageException exception) {
 			plugin.getLogger().log(
 					Level.SEVERE,
@@ -414,35 +417,16 @@ public final class PlayerDataPersistenceManager {
 			);
 			return OfflinePlayerDataUpdateResult.of(OfflinePlayerDataUpdateResult.Status.WRITE_FAILED);
 		}
-	}
 
-	private void submitOfflineUpdateTask(
-			java.util.concurrent.Callable<OfflinePlayerDataUpdateResult> updateTask,
-			Consumer<OfflinePlayerDataUpdateResult> resultHandler
-	) {
-		if (stopping) {
-			resultHandler.accept(OfflinePlayerDataUpdateResult.of(
-					OfflinePlayerDataUpdateResult.Status.UNAVAILABLE
-			));
-			return;
-		}
-
-		boolean queued = submitStorageTask(() -> {
-			OfflinePlayerDataUpdateResult result;
-			try {
-				result = updateTask.call();
-			} catch (Exception exception) {
-				plugin.getLogger().log(Level.SEVERE, "Could not complete an offline player data update.", exception);
-				result = OfflinePlayerDataUpdateResult.of(OfflinePlayerDataUpdateResult.Status.UNAVAILABLE);
-			}
-			OfflinePlayerDataUpdateResult completedResult = result;
-			runOnServerThread(() -> resultHandler.accept(completedResult));
-		});
-		if (!queued) {
-			resultHandler.accept(OfflinePlayerDataUpdateResult.of(
-					OfflinePlayerDataUpdateResult.Status.UNAVAILABLE
-			));
-		}
+		adminAuditLog.append(new AdminAuditEntry(
+				auditAction,
+				playerId,
+				updatedPlayerData.getLastKnownName(),
+				AdminAuditEntry.TargetMode.OFFLINE_FILE,
+				AdminAuditEntry.Values.from(storedPlayerData),
+				AdminAuditEntry.Values.from(updatedPlayerData)
+		), AdminAuditEntry.Outcome.SAVED);
+		return OfflinePlayerDataUpdateResult.updated(playerId, updatedPlayerData);
 	}
 
 	private void queryPlayerDataFileReadOnly(
@@ -538,6 +522,7 @@ public final class PlayerDataPersistenceManager {
 	private void submitSave(
 			UUID playerId,
 			StoredPlayerData storedPlayerData,
+			AdminAuditEntry auditEntry,
 			Consumer<Boolean> resultHandler
 	) {
 		if (stopping) {
@@ -547,6 +532,10 @@ public final class PlayerDataPersistenceManager {
 
 		boolean queued = submitStorageTask(() -> {
 			boolean saved = saveSnapshot(playerId, storedPlayerData);
+			adminAuditLog.append(
+					auditEntry,
+					saved ? AdminAuditEntry.Outcome.SAVED : AdminAuditEntry.Outcome.CACHE_ONLY
+			);
 			runOnServerThread(() -> resultHandler.accept(saved));
 		});
 		if (!queued) {

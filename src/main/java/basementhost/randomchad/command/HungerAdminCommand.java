@@ -1,13 +1,17 @@
 package basementhost.randomchad.command;
 
 import basementhost.randomchad.HungerOverhaul;
+import basementhost.randomchad.data.AdminAuditEntry;
 import basementhost.randomchad.data.GroupSettings;
 import basementhost.randomchad.data.PlayerData;
 import basementhost.randomchad.data.StoredPlayerData;
 import basementhost.randomchad.lang.LanguageManager;
 import basementhost.randomchad.storage.OfflinePlayerDataUpdateResult;
 import org.bukkit.OfflinePlayer;
+import org.bukkit.command.BlockCommandSender;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.ConsoleCommandSender;
+import org.bukkit.command.RemoteConsoleCommandSender;
 import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
@@ -72,7 +76,14 @@ public final class HungerAdminCommand {
 			amount = parsedAmount;
 		}
 
-		AdminChange change = new AdminChange(operation, valueTarget, amount, freezeOperation);
+		AdminAuditEntry.Action change = new AdminAuditEntry.Action(
+				sender.getName(),
+				getActorType(sender),
+				sender instanceof Player player ? player.getUniqueId() : null,
+				operation,
+				valueTarget,
+				freezeOperation ? null : amount
+		);
 		Player targetPlayer = findOnlinePlayer(args[1]);
 		if (targetPlayer != null) {
 			executeOnlineChange(sender, targetPlayer, change);
@@ -82,7 +93,7 @@ public final class HungerAdminCommand {
 		executeOfflineChange(sender, args[1], change);
 	}
 
-	private void executeOnlineChange(CommandSender sender, Player targetPlayer, AdminChange change) {
+	private void executeOnlineChange(CommandSender sender, Player targetPlayer, AdminAuditEntry.Action change) {
 		LanguageManager languageManager = plugin.getLanguageManager();
 		if (plugin.getPersistenceManager().isPlayerDataLoading(targetPlayer.getUniqueId())) {
 			sender.sendMessage(languageManager.getMessage(
@@ -104,12 +115,21 @@ public final class HungerAdminCommand {
 		}
 
 		plugin.getPlayerDataManager().refreshGroupSettings(targetPlayer);
+		AdminAuditEntry.Values before = AdminAuditEntry.Values.from(playerData);
 		applyChange(playerData, change);
 		plugin.getPersistenceManager().savePlayerData(targetPlayer);
+		plugin.getPersistenceManager().recordOnlineAdminChange(new AdminAuditEntry(
+				change,
+				targetPlayer.getUniqueId(),
+				targetPlayer.getName(),
+				AdminAuditEntry.TargetMode.ONLINE,
+				before,
+				AdminAuditEntry.Values.from(playerData)
+		));
 		sendResult(sender, AdminResultSnapshot.from(targetPlayer.getName(), playerData));
 	}
 
-	private void executeOfflineChange(CommandSender sender, String requestedName, AdminChange change) {
+	private void executeOfflineChange(CommandSender sender, String requestedName, AdminAuditEntry.Action change) {
 		OfflinePlayer cachedProfile = findKnownOfflinePlayer(requestedName);
 		String displayedName = cachedProfile == null
 				? requestedName
@@ -119,47 +139,58 @@ public final class HungerAdminCommand {
 				Map.of("player", displayedName)
 		));
 
-		if (cachedProfile != null) {
-			UUID playerId = cachedProfile.getUniqueId();
-			PlayerData cachedPlayerData = plugin.getPlayerDataManager().findPlayerData(playerId).orElse(null);
-			if (cachedPlayerData != null) {
-				executeCachedOfflineChange(sender, playerId, displayedName, cachedPlayerData, change);
-				return;
-			}
-
-			OfflineDefaults defaults = getOfflineDefaults();
-			plugin.getPersistenceManager().updateOfflinePlayerData(
-					playerId,
-					storedData -> updateStoredPlayerData(storedData, change, defaults),
-					result -> finishStoredOfflineChange(sender, displayedName, true, result)
-			);
+		UUID playerId = cachedProfile != null
+				? cachedProfile.getUniqueId()
+				: plugin.getPersistenceManager().findCachedOfflinePlayerIdByName(requestedName).orElse(null);
+		if (playerId != null) {
+			executeResolvedOfflineChange(sender, playerId, displayedName, change);
 			return;
 		}
 
-		UUID cachedDataPlayerId = plugin.getPersistenceManager()
-				.findCachedOfflinePlayerIdByName(requestedName)
-				.orElse(null);
-		if (cachedDataPlayerId != null) {
-			PlayerData cachedPlayerData = plugin.getPlayerDataManager()
-					.findPlayerData(cachedDataPlayerId)
-					.orElse(null);
-			if (cachedPlayerData != null) {
-				executeCachedOfflineChange(
+		plugin.getPersistenceManager().queryPlayerDataReadOnly(requestedName, result -> {
+			switch (result.getStatus()) {
+				case FOUND -> executeResolvedOfflineChange(
 						sender,
-						cachedDataPlayerId,
-						displayedName,
-						cachedPlayerData,
+						result.getPlayerId().orElseThrow(),
+						result.getPlayerData().orElseThrow().getLastKnownName(),
 						change
 				);
-				return;
+				case NOT_FOUND -> sendOfflineMessage(sender, "command.admin.player-not-found", requestedName);
+				case CORRUPT -> sendOfflineMessage(sender, "command.admin.offline-data-corrupt", requestedName);
+				case FAILED, UNAVAILABLE -> sendOfflineMessage(sender, "command.admin.offline-read-failure", requestedName);
 			}
+		});
+	}
+
+	private void executeResolvedOfflineChange(
+			CommandSender sender,
+			UUID playerId,
+			String playerName,
+			AdminAuditEntry.Action change
+	) {
+		// Name lookup can finish after the target joins or enters the TTL cache.
+		Player onlinePlayer = plugin.getServer().getPlayer(playerId);
+		if (onlinePlayer != null && onlinePlayer.isOnline()) {
+			executeOnlineChange(sender, onlinePlayer, change);
+			return;
+		}
+		if (plugin.getPersistenceManager().isPlayerDataLoading(playerId)) {
+			sendOfflineMessage(sender, "command.admin.loading", playerName);
+			return;
+		}
+
+		PlayerData cachedPlayerData = plugin.getPlayerDataManager().findPlayerData(playerId).orElse(null);
+		if (cachedPlayerData != null) {
+			executeCachedOfflineChange(sender, playerId, playerName, cachedPlayerData, change);
+			return;
 		}
 
 		OfflineDefaults defaults = getOfflineDefaults();
 		plugin.getPersistenceManager().updateOfflinePlayerData(
-				requestedName,
+				playerId,
 				storedData -> updateStoredPlayerData(storedData, change, defaults),
-				result -> finishStoredOfflineChange(sender, displayedName, false, result)
+				change,
+				result -> finishStoredOfflineChange(sender, playerName, result)
 		);
 	}
 
@@ -168,12 +199,21 @@ public final class HungerAdminCommand {
 			UUID playerId,
 			String playerName,
 			PlayerData playerData,
-			AdminChange change
+			AdminAuditEntry.Action change
 	) {
+		AdminAuditEntry.Values before = AdminAuditEntry.Values.from(playerData);
 		applyChange(playerData, change);
 		AdminResultSnapshot resultSnapshot = AdminResultSnapshot.from(playerName, playerData);
-		boolean queued = plugin.getPersistenceManager().saveCachedOfflinePlayerData(
+		AdminAuditEntry auditEntry = new AdminAuditEntry(
+				change,
 				playerId,
+				playerName,
+				AdminAuditEntry.TargetMode.OFFLINE_CACHE,
+				before,
+				AdminAuditEntry.Values.from(playerData)
+		);
+		boolean queued = plugin.getPersistenceManager().saveCachedOfflinePlayerData(
+				auditEntry,
 				saved -> finishOfflineSave(sender, resultSnapshot, saved)
 		);
 		if (!queued) {
@@ -184,7 +224,6 @@ public final class HungerAdminCommand {
 	private void finishStoredOfflineChange(
 			CommandSender sender,
 			String requestedName,
-			boolean knownProfile,
 			OfflinePlayerDataUpdateResult result
 	) {
 		if (!isRecipientAvailable(sender)) {
@@ -193,18 +232,13 @@ public final class HungerAdminCommand {
 
 		String messageKey = switch (result.getStatus()) {
 			case UPDATED -> null;
-			case NOT_FOUND -> knownProfile
-					? "command.admin.offline-data-not-found"
-					: "command.admin.player-not-found";
+			case NOT_FOUND -> "command.admin.offline-data-not-found";
 			case CORRUPT -> "command.admin.offline-data-corrupt";
 			case READ_FAILED, UNAVAILABLE -> "command.admin.offline-read-failure";
 			case WRITE_FAILED -> "command.admin.offline-save-failure";
 		};
 		if (messageKey != null) {
-			sender.sendMessage(plugin.getLanguageManager().getMessage(
-					messageKey,
-					Map.of("player", requestedName)
-			));
+			sendOfflineMessage(sender, messageKey, requestedName);
 			return;
 		}
 
@@ -212,9 +246,9 @@ public final class HungerAdminCommand {
 		sendResult(sender, AdminResultSnapshot.from(updatedData));
 	}
 
-	private StoredPlayerData updateStoredPlayerData(
+	private static StoredPlayerData updateStoredPlayerData(
 			StoredPlayerData storedData,
-			AdminChange change,
+			AdminAuditEntry.Action change,
 			OfflineDefaults defaults
 	) {
 		String groupId = storedData.getLastKnownGroupId()
@@ -269,7 +303,7 @@ public final class HungerAdminCommand {
 		}
 
 		if (!saved) {
-			sendOfflineSaveFailure(sender, resultSnapshot.playerName());
+			sendOfflineMessage(sender, "command.admin.offline-cache-save-failure", resultSnapshot.playerName());
 			return;
 		}
 
@@ -277,14 +311,21 @@ public final class HungerAdminCommand {
 	}
 
 	private void sendOfflineSaveFailure(CommandSender sender, String playerName) {
+		sendOfflineMessage(sender, "command.admin.offline-save-failure", playerName);
+	}
+
+	private void sendOfflineMessage(CommandSender sender, String messageKey, String playerName) {
+		if (!isRecipientAvailable(sender)) {
+			return;
+		}
 		sender.sendMessage(plugin.getLanguageManager().getMessage(
-				"command.admin.offline-save-failure",
+				messageKey,
 				Map.of("player", playerName)
 		));
 	}
 
-	private void applyChange(PlayerData playerData, AdminChange change) {
-		if (change.freezeOperation()) {
+	private static void applyChange(PlayerData playerData, AdminAuditEntry.Action change) {
+		if (change.amount() == null) {
 			setFrozen(playerData, change.valueTarget(), change.operation().equals("freeze"));
 			return;
 		}
@@ -346,7 +387,7 @@ public final class HungerAdminCommand {
 		));
 	}
 
-	private void changeValue(PlayerData playerData, String operation, String valueTarget, double amount) {
+	private static void changeValue(PlayerData playerData, String operation, String valueTarget, double amount) {
 		if (valueTarget.equals("nutrition") || valueTarget.equals("all")) {
 			changeNutrition(playerData, operation, amount);
 		}
@@ -356,7 +397,7 @@ public final class HungerAdminCommand {
 		}
 	}
 
-	private void changeNutrition(PlayerData playerData, String operation, double amount) {
+	private static void changeNutrition(PlayerData playerData, String operation, double amount) {
 		switch (operation) {
 			case "set" -> playerData.setNutrition(amount);
 			case "add" -> playerData.addNutrition(amount);
@@ -365,7 +406,7 @@ public final class HungerAdminCommand {
 		}
 	}
 
-	private void changeFullness(PlayerData playerData, String operation, double amount) {
+	private static void changeFullness(PlayerData playerData, String operation, double amount) {
 		switch (operation) {
 			case "set" -> playerData.setFullness(amount);
 			case "add" -> playerData.addFullness(amount);
@@ -374,7 +415,7 @@ public final class HungerAdminCommand {
 		}
 	}
 
-	private void setFrozen(PlayerData playerData, String valueTarget, boolean frozen) {
+	private static void setFrozen(PlayerData playerData, String valueTarget, boolean frozen) {
 		if (valueTarget.equals("nutrition") || valueTarget.equals("all")) {
 			playerData.setNutritionFrozen(frozen);
 		}
@@ -446,6 +487,16 @@ public final class HungerAdminCommand {
 		return !(recipient instanceof Player player) || player.isOnline();
 	}
 
+	private static String getActorType(CommandSender sender) {
+		return switch (sender) {
+			case Player player -> "player";
+			case RemoteConsoleCommandSender remoteConsole -> "remote_console";
+			case ConsoleCommandSender console -> "console";
+			case BlockCommandSender commandBlock -> "command_block";
+			default -> "other";
+		};
+	}
+
 	private void sendUsage(CommandSender sender, String label, boolean freezeOperation) {
 		String messageKey = freezeOperation
 				? "command.admin.freeze-usage"
@@ -469,14 +520,6 @@ public final class HungerAdminCommand {
 
 	private String formatPercentage(double percentage) {
 		return String.format(Locale.ROOT, "%.1f", percentage);
-	}
-
-	private record AdminChange(
-			String operation,
-			String valueTarget,
-			double amount,
-			boolean freezeOperation
-	) {
 	}
 
 	private record OfflineDefaults(String groupId, double maxNutrition, double maxFullness) {

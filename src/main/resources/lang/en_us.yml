@@ -85,6 +85,7 @@ command:
     offline-data-corrupt: "<red>{player}'s offline data file is corrupt. This update did not overwrite it.</red>"
     offline-read-failure: "<red>Could not read {player}'s offline data. No update was applied; check the server console.</red>"
     offline-save-failure: "<red>Could not confirm that {player}'s offline data was saved. Check the server console.</red>"
+    offline-cache-save-failure: "<red>{player}'s data changed in memory, but saving failed. Check the console and player status before retrying.</red>"
     invalid-number: "<red>'{value}' is not a valid finite number.</red>"
     negative-number: "<red>The value must not be negative.</red>"
     value-usage: "<yellow>Usage: /{label} [set|add|reduce] [player] [nutrition|fullness|all] [value]</yellow>"

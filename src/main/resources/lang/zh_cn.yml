@@ -85,6 +85,7 @@ command:
     offline-data-corrupt: "<red>{player} 的离线数据文件已损坏；本次修改没有覆盖该文件。</red>"
     offline-read-failure: "<red>无法读取 {player} 的离线数据，本次修改未执行；请检查服务器控制台。</red>"
     offline-save-failure: "<red>无法确认 {player} 的离线数据已保存，请检查服务器控制台。</red>"
+    offline-cache-save-failure: "<red>{player} 的内存数据已修改，但写入文件失败。请先检查控制台和玩家状态，再决定是否重试。</red>"
     invalid-number: "<red>“{value}”不是有效的有限数值。</red>"
     negative-number: "<red>数值不能为负数。</red>"
     value-usage: "<yellow>用法：/{label} [set|add|reduce] [玩家] [nutrition|fullness|all] [数值]</yellow>"

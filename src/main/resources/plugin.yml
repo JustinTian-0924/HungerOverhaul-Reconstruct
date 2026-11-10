@@ -1,7 +1,7 @@
 name: HungerOverhaul
 version: '${version}'
 main: basementhost.randomchad.HungerOverhaul
-api-version: '26.2'
+api-version: '26.3'
 description: Replaces Minecraft's vanilla hunger mechanics with fullness and nutrition systems
 author: Random_Chad
 commands:
