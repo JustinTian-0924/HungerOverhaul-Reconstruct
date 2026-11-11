@@ -15,12 +15,16 @@
 # Actions run once on the next server tick after successful consumption, including cake slices.
 # Effects run first, then commands in list order. Offline/dead players skip remaining actions.
 # A completed consumption uses its original action list even if a reload happens before execution.
+# Each effect and command rolls independently once per completed consumption.
+# Optional chance is a number in [0, 1]: 0 = never, 0.25 = 25%, 1 = always (default).
+# A missed roll skips only that action; it does not affect the food's nutrition or fullness.
 # Example to copy under one food (all examples below are disabled):
 #   post-consume:
 #     effects:
 #       - type: minecraft:regeneration  # The minecraft: prefix can be omitted.
 #         duration: 100                 # Positive ticks; 20 ticks = 1 second.
 #         amplifier: 0                  # 0 = level I, 1 = level II; allowed range 0..255.
+#         chance: 0.25                  # Optional, defaults to 1. Each action has its own chance.
 #         ambient: false                # Optional, default false.
 #         particles: true               # Optional, default true.
 #         icon: true                    # Optional, default true.
@@ -28,6 +32,7 @@
 #       - "say {player} ate {food}"      # Plain text runs as console, as in the legacy plugin.
 #       - sender: player               # console or player; player does not gain permissions.
 #         command: "help"
+#         chance: 0.5                   # Use this map format for commands with a chance.
 # Placeholders: {player}, {player_uuid}, {food} (matched rule ID, or fallback).
 # A single leading / is optional. PlaceholderAPI placeholders are not expanded here.
 # Only add trusted commands: console commands run with console permissions.

@@ -7,13 +7,20 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
 import java.util.Objects;
+import java.util.random.RandomGenerator;
 
 // Waits until native item consumption is complete before effects or external commands run.
 public final class FoodPostConsumeManager {
 	private final Plugin plugin;
+	private final RandomGenerator random;
 
 	public FoodPostConsumeManager(Plugin plugin) {
+		this(plugin, RandomGenerator.getDefault());
+	}
+
+	public FoodPostConsumeManager(Plugin plugin, RandomGenerator random) {
 		this.plugin = Objects.requireNonNull(plugin, "plugin");
+		this.random = Objects.requireNonNull(random, "random");
 	}
 
 	public void schedule(Player player, FoodSettings food) {
@@ -28,9 +35,13 @@ public final class FoodPostConsumeManager {
 			if (!canApply(player)) {
 				return;
 			}
+			FoodPostConsumeSettings.Effect action = actions.effects().get(index);
+			if (!shouldTrigger(action.chance())) {
+				continue;
+			}
 			try {
 				// Do not force replacement of stronger native or other-plugin effects.
-				player.addPotionEffect(actions.effects().get(index));
+				player.addPotionEffect(action.effect());
 			} catch (RuntimeException exception) {
 				warn("effect", index, foodId, player, exception.getClass().getSimpleName());
 			}
@@ -41,6 +52,9 @@ public final class FoodPostConsumeManager {
 				return;
 			}
 			FoodPostConsumeSettings.Command action = actions.commands().get(index);
+			if (!shouldTrigger(action.chance())) {
+				continue;
+			}
 			CommandSender sender = action.sender() == FoodPostConsumeSettings.Sender.CONSOLE
 					? plugin.getServer().getConsoleSender()
 					: player;
@@ -53,6 +67,11 @@ public final class FoodPostConsumeManager {
 				warn("command", index, foodId, player, exception.getClass().getSimpleName());
 			}
 		}
+	}
+
+	private boolean shouldTrigger(double chance) {
+		// Certain and disabled actions need no draw; all other actions draw independently.
+		return chance >= 1.0 || (chance > 0.0 && random.nextDouble() < chance);
 	}
 
 	private boolean canApply(Player player) {

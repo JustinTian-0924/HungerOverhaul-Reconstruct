@@ -31,12 +31,12 @@ public final class FoodPostConsumeParser {
 		}
 		requireKnownFields(section, Set.of("effects", "commands"), path);
 
-		List<PotionEffect> effects = new ArrayList<>();
+		List<FoodPostConsumeSettings.Effect> effects = new ArrayList<>();
 		List<?> configuredEffects = readOptionalList(section, "effects", path);
 		for (int index = 0; index < configuredEffects.size(); index++) {
 			String effectPath = path + ".effects[" + index + "]";
 			ConfigurationSection effect = readListSection(configuredEffects.get(index), effectPath);
-			requireKnownFields(effect, Set.of("type", "duration", "amplifier", "ambient", "particles", "icon"), effectPath);
+			requireKnownFields(effect, Set.of("type", "duration", "amplifier", "ambient", "particles", "icon", "chance"), effectPath);
 			Object typeValue = effect.get("type");
 			NamespacedKey typeKey = typeValue instanceof String typeName ? NamespacedKey.fromString(typeName) : null;
 			if (typeKey == null) {
@@ -53,12 +53,14 @@ public final class FoodPostConsumeParser {
 			Boolean ambient = readOptionalBoolean(effect, "ambient", effectPath);
 			Boolean particles = readOptionalBoolean(effect, "particles", effectPath);
 			Boolean icon = readOptionalBoolean(effect, "icon", effectPath);
+			double chance = readChance(effect, effectPath);
 			PotionEffectType type = RegistryAccess.registryAccess().getRegistry(RegistryKey.MOB_EFFECT).get(typeKey);
 			if (type == null) {
 				throw configurationError("Unknown potion effect '" + typeValue + "' at '" + effectPath + ".type'.");
 			}
-			effects.add(new PotionEffect(type, duration, amplifier == null ? 0 : amplifier,
-					Boolean.TRUE.equals(ambient), !Boolean.FALSE.equals(particles), !Boolean.FALSE.equals(icon)));
+			PotionEffect potionEffect = new PotionEffect(type, duration, amplifier == null ? 0 : amplifier,
+					Boolean.TRUE.equals(ambient), !Boolean.FALSE.equals(particles), !Boolean.FALSE.equals(icon));
+			effects.add(new FoodPostConsumeSettings.Effect(potionEffect, chance));
 		}
 
 		List<FoodPostConsumeSettings.Command> commands = new ArrayList<>();
@@ -67,12 +69,14 @@ public final class FoodPostConsumeParser {
 			String commandPath = path + ".commands[" + index + "]";
 			Object value = configuredCommands.get(index);
 			FoodPostConsumeSettings.Sender sender = FoodPostConsumeSettings.Sender.CONSOLE;
+			double chance = 1.0;
 			String command;
 			if (value instanceof String text) {
 				command = text;
 			} else {
 				ConfigurationSection entry = readListSection(value, commandPath);
-				requireKnownFields(entry, Set.of("sender", "command"), commandPath);
+				requireKnownFields(entry, Set.of("sender", "command", "chance"), commandPath);
+				chance = readChance(entry, commandPath);
 				if (!(entry.get("sender") instanceof String senderValue)) {
 					throw configurationError("'" + commandPath + ".sender' must be console or player.");
 				}
@@ -87,12 +91,26 @@ public final class FoodPostConsumeParser {
 				command = text;
 			}
 			try {
-				commands.add(new FoodPostConsumeSettings.Command(sender, command));
+				commands.add(new FoodPostConsumeSettings.Command(sender, command, chance));
 			} catch (IllegalArgumentException exception) {
 				throw configurationError("Invalid '" + commandPath + "': " + exception.getMessage(), exception);
 			}
 		}
 		return new FoodPostConsumeSettings(effects, commands);
+	}
+
+	private static double readChance(ConfigurationSection section, String path) {
+		Object value = section.get("chance");
+		if (value == null) {
+			return 1.0;
+		}
+		if (value instanceof Number number) {
+			double chance = number.doubleValue();
+			if (Double.isFinite(chance) && chance >= 0.0 && chance <= 1.0) {
+				return chance;
+			}
+		}
+		throw configurationError("'" + path + ".chance' must be a finite number from 0 to 1 (0.25 means 25%).");
 	}
 
 	private static List<?> readOptionalList(ConfigurationSection section, String name, String path) {
