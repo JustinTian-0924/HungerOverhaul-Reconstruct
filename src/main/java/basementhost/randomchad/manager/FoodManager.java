@@ -5,7 +5,9 @@ import basementhost.randomchad.compat.craftengine.CraftEngineItemLookup;
 import basementhost.randomchad.data.CustomModelDataMatch;
 import basementhost.randomchad.data.FoodOverflowPolicy;
 import basementhost.randomchad.data.FoodInterruptSettings;
+import basementhost.randomchad.data.FoodPostConsumeSettings;
 import basementhost.randomchad.data.FoodSettings;
+import basementhost.randomchad.util.FoodPostConsumeParser;
 import io.papermc.paper.datacomponent.DataComponentTypes;
 import io.papermc.paper.datacomponent.item.CustomModelData;
 import net.kyori.adventure.key.Key;
@@ -366,6 +368,7 @@ public final class FoodManager {
 		Long cooldownTicks = readOptionalLong(foodSection, "cooldown-ticks", foodId);
 		FoodOverflowPolicy overflowPolicy = readOptionalOverflowPolicy(foodSection, foodId);
 		FoodInterruptSettings interruptSettings = readInterruptSettings(foodSection, foodId);
+		FoodPostConsumeSettings postConsumeSettings = FoodPostConsumeParser.read(foodSection, foodId);
 
 		try {
 			return new FoodSettings(
@@ -375,7 +378,8 @@ public final class FoodManager {
 					eatingTimeTicks,
 					cooldownTicks,
 					overflowPolicy,
-					interruptSettings
+					interruptSettings,
+					postConsumeSettings
 			);
 		} catch (IllegalArgumentException exception) {
 			throw configurationError("Invalid values for food '" + foodId + "': " + exception.getMessage(), exception);

@@ -85,7 +85,7 @@ public final class FoodListener implements Listener {
 		FoodConsumptionResult result = foodConsumptionManager.applyFood(event.getPlayer(), foodSettings)
 				.orElse(null);
 		if (result != null) {
-			eatingManager.recordSuccessfulConsumption(event.getPlayer(), foodSettings, result);
+			foodConsumptionManager.completeConsumption(event.getPlayer(), foodSettings, result);
 		}
 	}
 

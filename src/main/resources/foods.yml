@@ -10,6 +10,29 @@
 # Unlisted edible items use fallback when it is enabled.
 # Potions and milk are not handled by fallback.
 # The minecraft:cake values below are applied to each individual slice.
+# post-consume is optional on fallback, foods entries, and custom-foods entries.
+# Missing post-consume means no extra actions. These settings are not inherited from fallback.
+# Actions run once on the next server tick after successful consumption, including cake slices.
+# Effects run first, then commands in list order. Offline/dead players skip remaining actions.
+# A completed consumption uses its original action list even if a reload happens before execution.
+# Example to copy under one food (all examples below are disabled):
+#   post-consume:
+#     effects:
+#       - type: minecraft:regeneration  # The minecraft: prefix can be omitted.
+#         duration: 100                 # Positive ticks; 20 ticks = 1 second.
+#         amplifier: 0                  # 0 = level I, 1 = level II; allowed range 0..255.
+#         ambient: false                # Optional, default false.
+#         particles: true               # Optional, default true.
+#         icon: true                    # Optional, default true.
+#     commands:
+#       - "say {player} ate {food}"      # Plain text runs as console, as in the legacy plugin.
+#       - sender: player               # console or player; player does not gain permissions.
+#         command: "help"
+# Placeholders: {player}, {player_uuid}, {food} (matched rule ID, or fallback).
+# A single leading / is optional. PlaceholderAPI placeholders are not expanded here.
+# Only add trusted commands: console commands run with console permissions.
+# Commands can integrate other plugins without adding their APIs as dependencies.
+# Native food effects remain enabled; added effects use the normal Minecraft merging rules.
 
 fallback:
   enabled: true
@@ -47,9 +70,20 @@ custom-foods: {}
 
 foods:
   # CraftEngine item example (the item ID, independent of material or model):
-  # default:hami_melon_slice:
-  #   fullness: 150
-  #   nutrition: 250
+  default:hami_melon_slice:
+    fullness: 150
+    nutrition: 250
+    post-consume:
+      effects:
+        - type: minecraft:regeneration
+          duration: 100
+          amplifier: 0
+          particles: true
+          icon: true
+      commands:
+        - "tell {player} 你吃下了哈密瓜片"
+        - sender: player
+          command: "help"
 
   minecraft:cake:
     nutrition: 70

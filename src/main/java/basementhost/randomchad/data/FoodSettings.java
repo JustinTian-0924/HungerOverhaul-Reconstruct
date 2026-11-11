@@ -11,6 +11,7 @@ public final class FoodSettings {
 	private final Long cooldownTicks;
 	private final FoodOverflowPolicy overflowPolicy;
 	private final FoodInterruptSettings interruptSettings;
+	private final FoodPostConsumeSettings postConsumeSettings;
 
 	public FoodSettings(
 			String id,
@@ -19,7 +20,8 @@ public final class FoodSettings {
 			Integer eatingTimeTicks,
 			Long cooldownTicks,
 			FoodOverflowPolicy overflowPolicy,
-			FoodInterruptSettings interruptSettings
+			FoodInterruptSettings interruptSettings,
+			FoodPostConsumeSettings postConsumeSettings
 	) {
 		this.id = requireId(id);
 		this.nutritionChange = requireFinite(nutritionChange, "nutritionChange");
@@ -35,6 +37,7 @@ public final class FoodSettings {
 		this.cooldownTicks = cooldownTicks;
 		this.overflowPolicy = overflowPolicy;
 		this.interruptSettings = Objects.requireNonNull(interruptSettings, "interruptSettings");
+		this.postConsumeSettings = Objects.requireNonNull(postConsumeSettings, "postConsumeSettings");
 	}
 
 	public String getId() {
@@ -63,6 +66,10 @@ public final class FoodSettings {
 
 	public FoodInterruptSettings getInterruptSettings() {
 		return interruptSettings;
+	}
+
+	public FoodPostConsumeSettings getPostConsumeSettings() {
+		return postConsumeSettings;
 	}
 
 	private static String requireId(String id) {

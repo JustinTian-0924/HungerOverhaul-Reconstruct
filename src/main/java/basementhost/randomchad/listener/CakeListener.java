@@ -75,8 +75,6 @@ public final class CakeListener implements Listener {
 		if (result == null) {
 			return;
 		}
-		eatingManager.recordSuccessfulConsumption(player, cakeSettings, result);
-
 		if (cakeBlock.getType() == Material.CAKE) {
 			consumeRegularCakeSlice(cakeBlock);
 		} else {
@@ -85,6 +83,7 @@ public final class CakeListener implements Listener {
 
 		player.incrementStatistic(Statistic.CAKE_SLICES_EATEN);
 		player.playSound(player.getLocation(), Sound.ENTITY_GENERIC_EAT, 1.0F, 1.0F);
+		foodConsumptionManager.completeConsumption(player, cakeSettings, result);
 	}
 
 	private boolean isCakeBlock(Material material) {

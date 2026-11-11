@@ -13,10 +13,17 @@ import java.util.Optional;
 public final class FoodConsumptionManager {
 	private final HungerOverhaul plugin;
 	private final EatingManager eatingManager;
+	private final FoodPostConsumeManager postConsumeManager;
 
 	public FoodConsumptionManager(HungerOverhaul plugin, EatingManager eatingManager) {
 		this.plugin = Objects.requireNonNull(plugin, "plugin");
 		this.eatingManager = Objects.requireNonNull(eatingManager, "eatingManager");
+		this.postConsumeManager = new FoodPostConsumeManager(plugin);
+	}
+
+	public void completeConsumption(Player player, FoodSettings foodSettings, FoodConsumptionResult result) {
+		eatingManager.recordSuccessfulConsumption(player, foodSettings, result);
+		postConsumeManager.schedule(player, foodSettings);
 	}
 
 	public boolean hasAvailableData(Player player) {
