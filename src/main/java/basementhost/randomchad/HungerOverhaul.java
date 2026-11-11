@@ -220,6 +220,10 @@ public final class HungerOverhaul extends JavaPlugin {
 		return eatingManager;
 	}
 
+	public FoodManager getFoodManager() {
+		return foodManager;
+	}
+
 	public PlayerLifecycleManager getPlayerLifecycleManager() {
 		return playerLifecycleManager;
 	}

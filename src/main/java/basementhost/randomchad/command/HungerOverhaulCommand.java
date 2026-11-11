@@ -43,11 +43,13 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 	private final HungerOverhaul plugin;
 	private final HungerAdminCommand adminCommand;
 	private final HungerAuditCommand auditCommand;
+	private final HungerFoodCommand foodCommand;
 
 	public HungerOverhaulCommand(HungerOverhaul plugin) {
 		this.plugin = plugin;
 		this.adminCommand = new HungerAdminCommand(plugin);
 		this.auditCommand = new HungerAuditCommand(plugin);
+		this.foodCommand = new HungerFoodCommand(plugin);
 	}
 
 	@Override
@@ -73,6 +75,11 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 			}
 
 			sendPlayerStatus(sender, statusRequest);
+			return true;
+		}
+
+		if (args[0].equalsIgnoreCase("food")) {
+			foodCommand.execute(sender, label, args);
 			return true;
 		}
 
@@ -136,6 +143,9 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 		if (sender.hasPermission(HungerAuditCommand.PERMISSION) && "audit".startsWith(typedText)) {
 			suggestions.add("audit");
 		}
+		if (sender.hasPermission(HungerFoodCommand.PERMISSION) && "food".startsWith(typedText)) {
+			suggestions.add("food");
+		}
 		if (sender.hasPermission(HungerAdminCommand.ADMIN_PERMISSION)) {
 			for (String adminSubcommand : List.of("set", "add", "reduce", "freeze", "unfreeze")) {
 				if (adminSubcommand.startsWith(typedText)) {
@@ -174,6 +184,9 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 					"command.info.reload-hint",
 					Map.of("label", label)
 			));
+		}
+		if (sender.hasPermission(HungerFoodCommand.PERMISSION)) {
+			sender.sendMessage(languageManager.getMessage("command.info.food-hint", Map.of("label", label)));
 		}
 	}
 

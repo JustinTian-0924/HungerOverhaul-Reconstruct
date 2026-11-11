@@ -7,9 +7,9 @@ author: Random_Chad
 softdepend: [PlaceholderAPI, CraftEngine]
 commands:
   hunger:
-    description: Shows HungerOverhaul information, player status, changes player data, or reloads settings
+    description: Shows HungerOverhaul information, player status and food rules, changes player data, or reloads settings
     aliases: [ho, nutrition]
-    usage: "/hunger [status [player] [compact|detail]|audit <player> [page]|reload|set|add|reduce|freeze|unfreeze]"
+    usage: "/hunger [status [player] [compact|detail]|food|audit <player> [page]|reload|set|add|reduce|freeze|unfreeze]"
     permission: hungeroverhaul.use
 permissions:
   hungeroverhaul.use:
@@ -26,4 +26,7 @@ permissions:
     default: op
   hungeroverhaul.audit:
     description: Allows viewing read-only HungerOverhaul admin audit records
+    default: op
+  hungeroverhaul.food:
+    description: Allows inspecting the active food rule for the main-hand item without consuming it
     default: op

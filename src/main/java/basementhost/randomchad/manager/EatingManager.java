@@ -76,6 +76,10 @@ public final class EatingManager {
 		this.settings = Objects.requireNonNull(settings, "settings");
 	}
 
+	public EatingSettings getSettings() {
+		return settings;
+	}
+
 	public boolean isProgressFeedbackActive(UUID playerId) {
 		return settings.getFeedbackSettings().isProgressActionBarEnabled()
 				&& (sessionsByPlayer.containsKey(playerId) || pendingStartsByPlayer.containsKey(playerId));

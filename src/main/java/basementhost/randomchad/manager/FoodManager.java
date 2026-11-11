@@ -1,15 +1,16 @@
 package basementhost.randomchad.manager;
 
-import basementhost.randomchad.HungerOverhaul;
 import basementhost.randomchad.compat.craftengine.CraftEngineItemLookup;
 import basementhost.randomchad.data.CustomModelDataMatch;
 import basementhost.randomchad.data.FoodOverflowPolicy;
 import basementhost.randomchad.data.FoodInterruptSettings;
+import basementhost.randomchad.data.FoodInspection;
 import basementhost.randomchad.data.FoodPostConsumeSettings;
 import basementhost.randomchad.data.FoodSettings;
 import basementhost.randomchad.util.FoodPostConsumeParser;
 import io.papermc.paper.datacomponent.DataComponentTypes;
 import io.papermc.paper.datacomponent.item.CustomModelData;
+import io.papermc.paper.datacomponent.item.Consumable;
 import net.kyori.adventure.key.Key;
 import org.bukkit.Color;
 import org.bukkit.Material;
@@ -18,6 +19,7 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.plugin.Plugin;
 
 import java.io.File;
 import java.io.IOException;
@@ -41,7 +43,7 @@ public final class FoodManager {
 	private static final String CUSTOM_FOODS = "custom-foods";
 	private static final Set<String> MODEL_DATA_FIELDS = Set.of("floats", "flags", "strings", "colors");
 
-	private final HungerOverhaul plugin;
+	private final Plugin plugin;
 	private final CraftEngineItemLookup craftEngineItemLookup;
 
 	private Map<Material, FoodSettings> settingsByMaterial = Map.of();
@@ -49,7 +51,7 @@ public final class FoodManager {
 	private Map<Material, List<CustomFoodRule>> customFoodsByMaterial = Map.of();
 	private FoodSettings fallbackSettings;
 
-	public FoodManager(HungerOverhaul plugin) {
+	public FoodManager(Plugin plugin) {
 		this.plugin = Objects.requireNonNull(plugin, "plugin");
 		this.craftEngineItemLookup = new CraftEngineItemLookup(plugin.getServer().getPluginManager(), plugin.getLogger());
 	}
@@ -81,40 +83,75 @@ public final class FoodManager {
 			return Optional.empty();
 		}
 
-		if (!craftEngineSettingsById.isEmpty()) {
-			String craftEngineId = craftEngineItemLookup.findId(item);
-			FoodSettings craftEngineSettings = craftEngineId == null ? null : craftEngineSettingsById.get(craftEngineId);
-			if (craftEngineSettings != null) {
-				return Optional.of(craftEngineSettings);
-			}
-		}
-
 		Material material = item.getType();
+		boolean hasModelRules = customFoodsByMaterial.containsKey(material);
+		return findItemMatch(
+				material,
+				craftEngineSettingsById.isEmpty() ? null : craftEngineItemLookup.findId(item),
+				hasModelRules && item.isDataOverridden(DataComponentTypes.ITEM_MODEL) ? item.getData(DataComponentTypes.ITEM_MODEL) : null,
+				hasModelRules ? item.getData(DataComponentTypes.CUSTOM_MODEL_DATA) : null
+		).map(FoodMatch::food);
+	}
+
+	public Optional<FoodInspection> inspectFood(ItemStack item) {
+		if (item == null || item.isEmpty()) {
+			return Optional.empty();
+		}
+		Material material = item.getType();
+		Consumable consumable = item.getData(DataComponentTypes.CONSUMABLE);
+		String craftEngineId = craftEngineItemLookup.findId(item);
+		Key itemModel = item.getData(DataComponentTypes.ITEM_MODEL);
+		boolean modelOverridden = item.isDataOverridden(DataComponentTypes.ITEM_MODEL);
+		CustomModelData modelData = item.getData(DataComponentTypes.CUSTOM_MODEL_DATA);
+		FoodMatch match = consumable == null ? null : findItemMatch(
+				material, craftEngineId, modelOverridden ? itemModel : null, modelData
+		).orElse(null);
+		// A held cake is not an item food, but can preview the rule used after placement.
+		if (match == null && material == Material.CAKE) {
+			match = findMaterialMatch(material)
+					.map(value -> new FoodMatch(value.food(), FoodInspection.Source.CAKE_SLICE)).orElse(null);
+		}
+		return Optional.of(new FoodInspection(
+				material.getKey().asString(), consumable == null ? null : consumable.consumeSeconds(),
+				craftEngineId, craftEngineItemLookup.isAvailable(), itemModel == null ? null : itemModel.asString(),
+				modelOverridden, modelData, match == null ? null : match.food(),
+				match == null ? FoodInspection.Source.NONE : match.source()
+		));
+	}
+
+	private Optional<FoodMatch> findItemMatch(Material material, String craftEngineId, Key itemModel, CustomModelData modelData) {
+		FoodSettings craftEngineFood = craftEngineId == null ? null : craftEngineSettingsById.get(craftEngineId);
+		if (craftEngineFood != null) {
+			return Optional.of(new FoodMatch(craftEngineFood, FoodInspection.Source.CRAFTENGINE));
+		}
 		List<CustomFoodRule> customRules = customFoodsByMaterial.get(material);
 		if (customRules != null) {
-			Key itemModel = item.isDataOverridden(DataComponentTypes.ITEM_MODEL)
-					? item.getData(DataComponentTypes.ITEM_MODEL)
-					: null;
-			CustomModelData modelData = item.getData(DataComponentTypes.CUSTOM_MODEL_DATA);
 			for (CustomFoodRule rule : customRules) {
 				if (rule.selector().matches(itemModel, modelData)) {
-					return Optional.of(rule.settings());
+					FoodInspection.Source source = rule.selector().itemModel() == null
+							? FoodInspection.Source.CUSTOM_MODEL_DATA
+							: rule.selector().modelData() == null ? FoodInspection.Source.ITEM_MODEL : FoodInspection.Source.BOTH_MODELS;
+					return Optional.of(new FoodMatch(rule.settings(), source));
 				}
 			}
 		}
 
-		return material == Material.CAKE ? Optional.empty() : findFoodSettings(material);
+		return material == Material.CAKE ? Optional.empty() : findMaterialMatch(material);
 	}
 
 	public Optional<FoodSettings> findFoodSettings(Material material) {
 		Objects.requireNonNull(material, "material");
+		return findMaterialMatch(material).map(FoodMatch::food);
+	}
+
+	private Optional<FoodMatch> findMaterialMatch(Material material) {
 		FoodSettings explicitSettings = settingsByMaterial.get(material);
 		if (explicitSettings != null) {
-			return Optional.of(explicitSettings);
+			return Optional.of(new FoodMatch(explicitSettings, FoodInspection.Source.MATERIAL));
 		}
 
 		if (fallbackSettings != null && shouldUseFallback(material)) {
-			return Optional.of(fallbackSettings);
+			return Optional.of(new FoodMatch(fallbackSettings, FoodInspection.Source.FALLBACK));
 		}
 
 		return Optional.empty();
@@ -569,6 +606,9 @@ public final class FoodManager {
 	}
 
 	private record CustomFoodRule(CustomFoodSelector selector, FoodSettings settings) {
+	}
+
+	private record FoodMatch(FoodSettings food, FoodInspection.Source source) {
 	}
 
 	private record CustomFoodSelector(NamespacedKey itemModel, CustomModelDataMatch modelData) {

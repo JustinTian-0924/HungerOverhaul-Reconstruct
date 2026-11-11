@@ -27,13 +27,11 @@ public final class CraftEngineItemLookup {
 		craftEngine = null;
 		getCustomItemId = null;
 		lookupFailureLogged = false;
-		if (!hasCraftEngineFoods) {
-			return;
-		}
-
 		Plugin provider = plugins.getPlugin("CraftEngine");
 		if (provider == null || !provider.isEnabled()) {
-			logger.warning("CraftEngine food IDs are configured, but CraftEngine is not enabled. Model and vanilla food rules still apply.");
+			if (hasCraftEngineFoods) {
+				logger.warning("CraftEngine food IDs are configured, but CraftEngine is not enabled. Model and vanilla food rules still apply.");
+			}
 			return;
 		}
 
@@ -42,12 +40,18 @@ public final class CraftEngineItemLookup {
 			getCustomItemId = api.getMethod("getCustomItemId", ItemStack.class);
 			craftEngine = provider;
 		} catch (ReflectiveOperationException | LinkageError | SecurityException exception) {
-			logger.log(Level.WARNING, "CraftEngine food IDs are unavailable with the installed CraftEngine API.", exception);
+			if (hasCraftEngineFoods) {
+				logger.log(Level.WARNING, "CraftEngine food IDs are unavailable with the installed CraftEngine API.", exception);
+			}
 		}
 	}
 
+	public boolean isAvailable() {
+		return getCustomItemId != null && craftEngine.isEnabled();
+	}
+
 	public String findId(ItemStack item) {
-		if (getCustomItemId == null || !craftEngine.isEnabled()) {
+		if (!isAvailable()) {
 			return null;
 		}
 

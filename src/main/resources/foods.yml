@@ -1,5 +1,6 @@
 # HungerOverhaul food settings.
 # The foods section accepts vanilla Minecraft material IDs and CraftEngine item IDs.
+# Use /hunger food (hungeroverhaul.food permission) to inspect the active main-hand rule without consuming it.
 # nutrition and fullness accept positive, zero, or negative finite numbers.
 # eating-time-ticks optionally replaces the item's native duration before the group speed multiplier.
 # cooldown-ticks and overflow-policy optionally override config.yml for one food.
