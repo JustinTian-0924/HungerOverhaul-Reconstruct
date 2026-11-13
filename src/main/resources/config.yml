@@ -2,6 +2,21 @@
 # Bundled languages: en_us and zh_cn.
 language: en_us
 
+# Server-wide optimizations. False restores the original behavior for that individual path.
+# Missing options default to true, including on existing installations. /hunger reload applies changes.
+# Task intervals, hunger bar synchronization, numeric rules, and storage behavior are unchanged.
+performance:
+  # Avoid copying the session list when nobody is currently eating. Active sessions are unchanged.
+  skip-idle-eating-checks: true
+  # Reuse rendered status text; still send it on the normal actionbar interval so it remains visible.
+  # Value changes, successful reloads, and player quits invalidate the appropriate cached content.
+  cache-statusbar-messages: true
+  # Reuse immutable PAPI snapshots when both values and their maximums are unchanged.
+  # Snapshots are still checked every 5 ticks on the main thread; async requests only read them.
+  reuse-placeholder-snapshots: true
+  # Cache translated nutrition/fullness range names; successful reloads clear these names.
+  cache-placeholder-status-names: true
+
 # Player files are stored in plugins/HungerOverhaul/data/<uuid>.yml.
 # Cached data is saved on quit and removed only from memory after the TTL.
 # Player files on disk are never deleted automatically.

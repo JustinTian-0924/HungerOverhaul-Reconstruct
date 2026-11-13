@@ -11,6 +11,7 @@ import basementhost.randomchad.data.FoodInterruptSettings;
 import basementhost.randomchad.data.FoodOverflowPolicy;
 import basementhost.randomchad.data.FoodSettings;
 import basementhost.randomchad.data.PlayerData;
+import basementhost.randomchad.data.PerformanceSettings;
 import net.kyori.adventure.text.Component;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.EquipmentSlot;
@@ -43,6 +44,7 @@ public final class EatingManager {
 	private EatingSettings settings;
 	private BukkitTask timingTask;
 	private boolean started;
+	private boolean skipIdleChecks = true;
 
 	public EatingManager(
 			HungerOverhaul plugin,
@@ -78,6 +80,10 @@ public final class EatingManager {
 
 	public EatingSettings getSettings() {
 		return settings;
+	}
+
+	public void updatePerformanceSettings(PerformanceSettings settings) {
+		skipIdleChecks = Objects.requireNonNull(settings, "settings").skipIdleEatingChecks();
 	}
 
 	public boolean isProgressFeedbackActive(UUID playerId) {
@@ -447,6 +453,9 @@ public final class EatingManager {
 	}
 
 	private void updateEatingSessions() {
+		if (skipIdleChecks && sessionsByPlayer.isEmpty()) {
+			return;
+		}
 		for (Map.Entry<UUID, EatingSession> entry : List.copyOf(sessionsByPlayer.entrySet())) {
 			if (sessionsByPlayer.get(entry.getKey()) == entry.getValue()) {
 				updateEatingSession(entry.getKey(), entry.getValue());

@@ -2,6 +2,7 @@ package basementhost.randomchad.compat.placeholderapi;
 
 import basementhost.randomchad.HungerOverhaul;
 import basementhost.randomchad.data.PlayerData;
+import basementhost.randomchad.data.PerformanceSettings;
 import basementhost.randomchad.data.StatusEffectDefinition;
 import basementhost.randomchad.lang.LanguageManager;
 import basementhost.randomchad.manager.StatusEffectManager;
@@ -18,12 +19,14 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Locale;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
-// PAPI Support thingy
+// Publishes main-thread snapshots for both synchronous and asynchronous placeholder reads.
 public final class PlaceholderApiHook implements Listener {
 	private static final long SNAPSHOT_INTERVAL_TICKS = 5L;
 	private static final Map<String, Function<PlayerSnapshot, String>> PLACEHOLDERS = Map.of(
@@ -40,12 +43,24 @@ public final class PlaceholderApiHook implements Listener {
 	private final HungerOverhaul plugin;
 	private final Map<UUID, PlayerSnapshot> snapshots = new ConcurrentHashMap<>();
 	private final Expansion expansion;
+	private final Map<StatusNameKey, String> statusNames = new HashMap<>();
+	private PerformanceSettings performanceSettings;
 	private BukkitTask snapshotTask;
 	private boolean registered;
 
-	public PlaceholderApiHook(HungerOverhaul plugin) {
+	public PlaceholderApiHook(HungerOverhaul plugin, PerformanceSettings performanceSettings) {
 		this.plugin = plugin;
+		this.performanceSettings = Objects.requireNonNull(performanceSettings, "performanceSettings");
 		this.expansion = new Expansion();
+	}
+
+	public void updatePerformanceSettings(PerformanceSettings settings) {
+		performanceSettings = Objects.requireNonNull(settings, "settings");
+		statusNames.clear();
+		if (registered) {
+			// Replace snapshots in place, avoiding a transient empty map for async readers.
+			publishSnapshots(true);
+		}
 	}
 
 	public void start() {
@@ -69,6 +84,7 @@ public final class PlaceholderApiHook implements Listener {
 		}
 		HandlerList.unregisterAll(this);
 		snapshots.clear();
+		statusNames.clear();
 
 		if (registered && plugin.getServer().getPluginManager().isPluginEnabled("PlaceholderAPI")) {
 			expansion.unregister();
@@ -82,6 +98,10 @@ public final class PlaceholderApiHook implements Listener {
 	}
 
 	private void refreshSnapshots() {
+		publishSnapshots(false);
+	}
+
+	private void publishSnapshots(boolean force) {
 		StatusEffectManager statusEffectManager = plugin.getStatusEffectManager();
 		LanguageManager languageManager = plugin.getLanguageManager();
 		for (Player player : plugin.getServer().getOnlinePlayers()) {
@@ -90,6 +110,13 @@ public final class PlaceholderApiHook implements Listener {
 			if (playerData == null || plugin.getPersistenceManager().isPlayerDataLoading(playerId)) {
 				snapshots.remove(playerId);
 				continue;
+			}
+
+			if (!force && performanceSettings.reusePlaceholderSnapshots()) {
+				PlayerSnapshot previous = snapshots.get(playerId);
+				if (previous != null && previous.matches(playerData)) {
+					continue;
+				}
 			}
 
 			double nutritionPercentage = playerData.getNutritionPercentage();
@@ -107,9 +134,13 @@ public final class PlaceholderApiHook implements Listener {
 		}
 	}
 
-	private static String getStatusName(LanguageManager languageManager, String type, StatusEffectDefinition effect) {
+	private String getStatusName(LanguageManager languageManager, String type, StatusEffectDefinition effect) {
 		String effectId = effect == null ? "normal" : effect.getId();
-		return languageManager.getTextOrDefault("status-effect." + type + "." + effectId, effectId);
+		if (!performanceSettings.cachePlaceholderStatusNames()) {
+			return languageManager.getTextOrDefault("status-effect." + type + "." + effectId, effectId);
+		}
+		return statusNames.computeIfAbsent(new StatusNameKey(type, effectId),
+				key -> languageManager.getTextOrDefault("status-effect." + key.type() + "." + key.effectId(), key.effectId()));
 	}
 
 	private static String formatValue(double value) {
@@ -163,5 +194,12 @@ public final class PlaceholderApiHook implements Listener {
 			String nutritionStatus,
 			String fullnessStatus
 	) {
+		private boolean matches(PlayerData data) {
+			return Double.compare(nutrition, data.getNutrition()) == 0 && Double.compare(fullness, data.getFullness()) == 0
+					&& Double.compare(maxNutrition, data.getMaxNutrition()) == 0 && Double.compare(maxFullness, data.getMaxFullness()) == 0;
+		}
+	}
+
+	private record StatusNameKey(String type, String effectId) {
 	}
 }

@@ -13,6 +13,7 @@ import basementhost.randomchad.data.LifecycleValueMode;
 import basementhost.randomchad.data.LifecycleValueRule;
 import basementhost.randomchad.data.LowValueWarningSettings;
 import basementhost.randomchad.data.PlayerLifecycleSettings;
+import basementhost.randomchad.data.PerformanceSettings;
 import basementhost.randomchad.data.RespawnLifecycleSettings;
 import basementhost.randomchad.data.StarvationDamageRule;
 import basementhost.randomchad.data.StarvationDamageSettings;
@@ -82,6 +83,7 @@ public final class HungerOverhaul extends JavaPlugin {
 	private StatusBarManager statusBarManager;
 	private PlayerLifecycleManager playerLifecycleManager;
 	private PlaceholderApiHook placeholderApiHook;
+	private PerformanceSettings performanceSettings = PerformanceSettings.DEFAULT;
 
 	@Override
 	public void onEnable() {
@@ -304,7 +306,8 @@ public final class HungerOverhaul extends JavaPlugin {
 					readHealthRegenerationSettings(configuration),
 					readEatingSettings(configuration),
 					readStatusBarSettings(configuration),
-					readPlayerLifecycleSettings(configuration)
+					readPlayerLifecycleSettings(configuration),
+					readPerformanceSettings(configuration)
 			);
 		} catch (IllegalStateException exception) {
 			throw new IllegalStateException("Invalid config.yml: " + exception.getMessage(), exception);
@@ -318,6 +321,7 @@ public final class HungerOverhaul extends JavaPlugin {
 		statusEffectManager.applyConfiguration(prepared.statusEffects());
 		foodManager.applyConfiguration(prepared.foods());
 		languageManager.applyConfiguration(prepared.language());
+		performanceSettings = main.performance();
 
 		persistenceManager.updateSettings(main.storage());
 		refreshOnlinePlayerGroups();
@@ -328,11 +332,16 @@ public final class HungerOverhaul extends JavaPlugin {
 		starvationDamageManager.updateSettings(main.starvationDamage());
 		healthRegenerationManager.updateSettings(main.healthRegeneration());
 		eatingManager.updateSettings(main.eating());
-		statusBarManager.updateSettings(main.statusBar(), main.eating().getFeedbackSettings().isActionBarEnabled());
+		eatingManager.updatePerformanceSettings(performanceSettings);
+		statusBarManager.updateSettings(main.statusBar(), main.eating().getFeedbackSettings().isActionBarEnabled(),
+				performanceSettings.cacheStatusbarMessages());
 		playerLifecycleManager.updateSettings(main.playerLifecycle());
 		statusAttributeManager.reload();
 		persistenceManager.saveAllLoadedPlayerData();
 		eatingManager.handleSuccessfulReload();
+		if (placeholderApiHook != null) {
+			placeholderApiHook.updatePerformanceSettings(performanceSettings);
+		}
 	}
 
 	private static String describeFailure(RuntimeException exception) {
@@ -355,7 +364,7 @@ public final class HungerOverhaul extends JavaPlugin {
 		}
 
 		try {
-			placeholderApiHook = new PlaceholderApiHook(this);
+			placeholderApiHook = new PlaceholderApiHook(this, performanceSettings);
 			placeholderApiHook.start();
 		} catch (RuntimeException | LinkageError exception) {
 			getLogger().log(Level.WARNING, "Could not enable the optional PlaceholderAPI integration.", exception);
@@ -450,10 +459,12 @@ public final class HungerOverhaul extends JavaPlugin {
 
 	private boolean startEatingSystem() {
 		try {
+			performanceSettings = readPerformanceSettings(getConfig());
 			EatingSettings settings = readEatingSettings(getConfig());
 			StatusBarSettings statusBarSettings = readStatusBarSettings(getConfig());
 			statusBarManager = new StatusBarManager(this, playerDataManager);
 			eatingManager = new EatingManager(this, groupManager, playerDataManager, statusBarManager, settings);
+			eatingManager.updatePerformanceSettings(performanceSettings);
 			FoodConsumptionManager foodConsumptionManager = new FoodConsumptionManager(this, eatingManager);
 			getServer().getPluginManager().registerEvents(
 					new FoodListener(foodManager, foodConsumptionManager, eatingManager),
@@ -468,7 +479,8 @@ public final class HungerOverhaul extends JavaPlugin {
 					this
 			);
 			eatingManager.start();
-			statusBarManager.updateSettings(statusBarSettings, settings.getFeedbackSettings().isActionBarEnabled());
+			statusBarManager.updateSettings(statusBarSettings, settings.getFeedbackSettings().isActionBarEnabled(),
+					performanceSettings.cacheStatusbarMessages());
 			return true;
 		} catch (RuntimeException exception) {
 			getLogger().log(
@@ -828,6 +840,15 @@ public final class HungerOverhaul extends JavaPlugin {
 		}
 	}
 
+	private PerformanceSettings readPerformanceSettings(FileConfiguration configuration) {
+		return new PerformanceSettings(
+				readBooleanSetting(configuration, "performance.skip-idle-eating-checks", true),
+				readBooleanSetting(configuration, "performance.cache-statusbar-messages", true),
+				readBooleanSetting(configuration, "performance.reuse-placeholder-snapshots", true),
+				readBooleanSetting(configuration, "performance.cache-placeholder-status-names", true)
+		);
+	}
+
 	private StatusBarSettings readStatusBarSettings(FileConfiguration configuration) {
 		boolean enabled = readBooleanSetting(configuration, "actionbar.enabled", true);
 		int updateIntervalTicks = readIntegerSetting(configuration, "actionbar.update-interval-ticks", 20);
@@ -1086,7 +1107,8 @@ public final class HungerOverhaul extends JavaPlugin {
 			HealthRegenerationSettings healthRegeneration,
 			EatingSettings eating,
 			StatusBarSettings statusBar,
-			PlayerLifecycleSettings playerLifecycle
+			PlayerLifecycleSettings playerLifecycle,
+			PerformanceSettings performance
 	) {
 	}
 }
