@@ -14,14 +14,13 @@ import java.util.UUID;
 
 // Uses the vanilla hunger bar only as a display for HungerOverhaul data.
 public final class VanillaHungerManager {
-	private static final long DISPLAY_UPDATE_INTERVAL_TICKS = 1L;
-
 	private final HungerOverhaul plugin;
 	private final PlayerDataManager playerDataManager;
 	private final Set<UUID> allowedPluginStarvationDamage = new HashSet<>();
 
 	private VanillaHungerSettings settings;
 	private BukkitTask displayTask;
+	private boolean started;
 
 	public VanillaHungerManager(
 			HungerOverhaul plugin,
@@ -34,21 +33,32 @@ public final class VanillaHungerManager {
 	}
 
 	public void start() {
-		if (displayTask != null) {
+		if (started) {
 			throw new IllegalStateException("VanillaHungerManager has already started");
 		}
 
+		started = true;
+		scheduleDisplayTask(0L);
+	}
+
+	private void scheduleDisplayTask(long delayTicks) {
 		displayTask = plugin.getServer().getScheduler().runTaskTimer(
 				plugin,
 				this::updateOnlinePlayers,
-				0L,
-				DISPLAY_UPDATE_INTERVAL_TICKS
+				delayTicks,
+				settings.getUpdateIntervalTicks()
 		);
 	}
 
 	public void updateSettings(VanillaHungerSettings settings) {
 		this.settings = Objects.requireNonNull(settings, "settings");
+		if (!started) {
+			return;
+		}
+		cancelDisplayTask();
+		// Reflect source/range changes immediately, then resume using the new interval.
 		updateOnlinePlayers();
+		scheduleDisplayTask(settings.getUpdateIntervalTicks());
 	}
 
 	public boolean isManaging(Player player) {
@@ -78,7 +88,12 @@ public final class VanillaHungerManager {
 	}
 
 	public void shutdown() {
+		started = false;
 		allowedPluginStarvationDamage.clear();
+		cancelDisplayTask();
+	}
+
+	private void cancelDisplayTask() {
 		if (displayTask == null) {
 			return;
 		}
@@ -103,9 +118,18 @@ public final class VanillaHungerManager {
 			case FULLNESS -> playerData.getFullnessPercentage();
 			case NUTRITION -> playerData.getNutritionPercentage();
 		};
-		player.setFoodLevel(mapPercentageToFoodLevel(percentage));
-		player.setSaturation(0.0F);
-		player.setExhaustion(0.0F);
+		int foodLevel = mapPercentageToFoodLevel(percentage);
+		boolean skipUnchanged = settings.isSkipUnchangedWrites();
+		// Compare real server values, not a cached last write, so external changes are corrected.
+		if (!skipUnchanged || player.getFoodLevel() != foodLevel) {
+			player.setFoodLevel(foodLevel);
+		}
+		if (!skipUnchanged || Float.compare(player.getSaturation(), 0.0F) != 0) {
+			player.setSaturation(0.0F);
+		}
+		if (!skipUnchanged || Float.compare(player.getExhaustion(), 0.0F) != 0) {
+			player.setExhaustion(0.0F);
+		}
 	}
 
 	private int mapPercentageToFoodLevel(double percentage) {

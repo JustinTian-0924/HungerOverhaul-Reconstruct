@@ -12,12 +12,25 @@ public final class VanillaHungerSettings {
 	private final int minimumFoodLevel;
 	private final int maximumFoodLevel;
 	private final boolean naturalRegenerationBlocked;
+	private final int updateIntervalTicks;
+	private final boolean skipUnchangedWrites;
 
 	public VanillaHungerSettings(
 			DisplaySource displaySource,
 			int minimumFoodLevel,
 			int maximumFoodLevel,
 			boolean naturalRegenerationBlocked
+	) {
+		this(displaySource, minimumFoodLevel, maximumFoodLevel, naturalRegenerationBlocked, 5, true);
+	}
+
+	public VanillaHungerSettings(
+			DisplaySource displaySource,
+			int minimumFoodLevel,
+			int maximumFoodLevel,
+			boolean naturalRegenerationBlocked,
+			int updateIntervalTicks,
+			boolean skipUnchangedWrites
 	) {
 		this.displaySource = Objects.requireNonNull(displaySource, "displaySource");
 		if (minimumFoodLevel < MINIMUM_ALLOWED_FOOD_LEVEL
@@ -33,10 +46,15 @@ public final class VanillaHungerSettings {
 		if (minimumFoodLevel > maximumFoodLevel) {
 			throw new IllegalArgumentException("minimumFoodLevel must not be greater than maximumFoodLevel");
 		}
+		if (updateIntervalTicks <= 0) {
+			throw new IllegalArgumentException("vanilla-hunger.update-interval-ticks must be greater than zero");
+		}
 
 		this.minimumFoodLevel = minimumFoodLevel;
 		this.maximumFoodLevel = maximumFoodLevel;
 		this.naturalRegenerationBlocked = naturalRegenerationBlocked;
+		this.updateIntervalTicks = updateIntervalTicks;
+		this.skipUnchangedWrites = skipUnchangedWrites;
 	}
 
 	public DisplaySource getDisplaySource() {
@@ -53,6 +71,14 @@ public final class VanillaHungerSettings {
 
 	public boolean isNaturalRegenerationBlocked() {
 		return naturalRegenerationBlocked;
+	}
+
+	public int getUpdateIntervalTicks() {
+		return updateIntervalTicks;
+	}
+
+	public boolean isSkipUnchangedWrites() {
+		return skipUnchangedWrites;
 	}
 
 	public enum DisplaySource {

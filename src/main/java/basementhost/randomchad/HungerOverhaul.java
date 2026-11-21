@@ -958,6 +958,8 @@ public final class HungerOverhaul extends JavaPlugin {
 		String configuredSource = readStringSetting(configuration, "vanilla-hunger.display.source", "fullness");
 		int minimumFoodLevel = readIntegerSetting(configuration, "vanilla-hunger.display.minimum-food-level", 1);
 		int maximumFoodLevel = readIntegerSetting(configuration, "vanilla-hunger.display.maximum-food-level", 20);
+		int updateIntervalTicks = readIntegerSetting(configuration, "vanilla-hunger.update-interval-ticks", 5);
+		boolean skipUnchangedWrites = readBooleanSetting(configuration, "vanilla-hunger.skip-unchanged-writes", true);
 		boolean blockNaturalRegeneration = readBooleanSetting(
 				configuration,
 				"vanilla-hunger.block-natural-regeneration",
@@ -971,11 +973,13 @@ public final class HungerOverhaul extends JavaPlugin {
 					displaySource,
 					minimumFoodLevel,
 					maximumFoodLevel,
-					blockNaturalRegeneration
+					blockNaturalRegeneration,
+					updateIntervalTicks,
+					skipUnchangedWrites
 			);
 		} catch (IllegalArgumentException exception) {
 			throw new IllegalStateException(
-					"Invalid vanilla hunger display settings: " + exception.getMessage(),
+					"Invalid vanilla hunger settings: " + exception.getMessage(),
 					exception
 			);
 		}

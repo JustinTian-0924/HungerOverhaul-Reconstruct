@@ -4,7 +4,8 @@ language: en_us
 
 # Server-wide optimizations. False restores the original behavior for that individual path.
 # Missing options default to true, including on existing installations. /hunger reload applies changes.
-# Task intervals, hunger bar synchronization, numeric rules, and storage behavior are unchanged.
+# These switches preserve task intervals, numeric rules, and storage behavior.
+# Vanilla hunger synchronization has its own interval and write optimization under vanilla-hunger.
 performance:
   # Avoid copying the session list when nobody is currently eating. Active sessions are unchanged.
   skip-idle-eating-checks: true
@@ -155,6 +156,15 @@ health-regeneration:
 # Food levels are whole numbers from 0 to 20.
 # Set minimum-food-level to 7 if players should always be able to sprint.
 vanilla-hunger:
+  # Main-thread synchronization of the vanilla display, saturation, and exhaustion.
+  # Positive whole ticks; 20 ticks is approximately one second at 20 TPS.
+  # Default 5 = about 0.25 seconds; 1 restores the original every-tick frequency.
+  # Larger intervals delay the displayed bar, related native sprint eligibility, and correction
+  # of other plugins' direct changes. Native hunger/exhaustion events remain blocked separately.
+  update-interval-ticks: 10
+  # Compare the player's real values before writing, including changes from other plugins.
+  # False restores unconditional writes. For the original behavior use interval 1 and false.
+  skip-unchanged-writes: true
   # When true, only hunger-based vanilla health regeneration is blocked.
   # Potions, beacons, commands, and other healing sources are unaffected.
   block-natural-regeneration: true
