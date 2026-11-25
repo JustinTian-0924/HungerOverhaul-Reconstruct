@@ -82,7 +82,18 @@ public final class FilePlayerDataStorage implements PlayerDataStorage {
 	}
 
 	private Optional<StoredPlayerData> readPlayerFile(UUID playerId) throws PlayerDataStorageException {
-		Path playerFile = getPlayerFile(playerId);
+		return readPlayerFile(getPlayerFile(playerId));
+	}
+
+	// Migration reads the discovered filename literally, including uppercase UUID filenames.
+	StoredPlayerData readMigrationFile(Path playerFile) throws PlayerDataStorageException {
+		if (!playerFile.toAbsolutePath().normalize().getParent().equals(dataDirectory.toAbsolutePath().normalize())) {
+			throw new PlayerDataStorageException("Migration source is outside the player data directory");
+		}
+		return readPlayerFile(playerFile).orElseThrow(() -> new PlayerDataStorageException("Migration source disappeared: " + playerFile));
+	}
+
+	private Optional<StoredPlayerData> readPlayerFile(Path playerFile) throws PlayerDataStorageException {
 		if (Files.notExists(playerFile)) {
 			return Optional.empty();
 		}

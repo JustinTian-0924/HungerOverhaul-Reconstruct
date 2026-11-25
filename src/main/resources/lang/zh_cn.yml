@@ -80,9 +80,9 @@ command:
     other-loading: "<yellow>{player} 的 HungerOverhaul 数据仍在加载，请稍后重试。</yellow>"
     other-unavailable: "<red>{player} 的 HungerOverhaul 数据目前不可用。</red>"
     offline-loading: "<yellow>正在异步读取 {player} 的离线档案……</yellow>"
-    offline-data-not-found: "<red>找到了玩家 {player}，但不存在其 HungerOverhaul 数据文件。</red>"
-    offline-data-corrupt: "<red>{player} 的离线数据文件已损坏；本次只读查询未修改该文件。</red>"
-    offline-query-failed: "<red>无法读取 {player} 的离线数据；本次查询未修改任何玩家文件，请检查服务器控制台。</red>"
+    offline-data-not-found: "<red>找到了玩家 {player}，但当前存储中没有其 HungerOverhaul 数据。</red>"
+    offline-data-corrupt: "<red>{player} 的离线数据记录已损坏；本次只读查询未修改该记录。</red>"
+    offline-query-failed: "<red>无法读取 {player} 的离线数据；本次查询未修改任何玩家数据，请检查服务器控制台。</red>"
     offline-default-fallback: "<yellow>这是旧版 v1 档案，没有保存群组和最大值；本次暂按 default fallback 显示，玩家下次正常保存后会升级。</yellow>"
     offline-group-snapshot: "<gray>群组和最大值来自该玩家最后一次保存的档案。</gray>"
     offline-group-missing-fallback: "<yellow>已保存的群组 {group} 当前不存在；基础数值仍使用保存的最大值，群组规则推算改用 default fallback。</yellow>"
@@ -135,11 +135,11 @@ command:
     loading: "<yellow>{player} 的 HungerOverhaul 数据仍在加载，请稍后重试。</yellow>"
     unavailable: "<red>{player} 的 HungerOverhaul 数据目前不可用。</red>"
     offline-loading: "<yellow>正在异步读取并准备修改 {player} 的离线数据……</yellow>"
-    offline-data-not-found: "<red>找到了玩家 {player}，但不存在其 HungerOverhaul 数据文件；未创建新文件。</red>"
-    offline-data-corrupt: "<red>{player} 的离线数据文件已损坏；本次修改没有覆盖该文件。</red>"
+    offline-data-not-found: "<red>找到了玩家 {player}，但当前存储中没有其 HungerOverhaul 数据；未创建新记录。</red>"
+    offline-data-corrupt: "<red>{player} 的离线数据记录已损坏；本次修改没有覆盖该记录。</red>"
     offline-read-failure: "<red>无法读取 {player} 的离线数据，本次修改未执行；请检查服务器控制台。</red>"
     offline-save-failure: "<red>无法确认 {player} 的离线数据已保存，请检查服务器控制台。</red>"
-    offline-cache-save-failure: "<red>{player} 的内存数据已修改，但写入文件失败。请先检查控制台和玩家状态，再决定是否重试。</red>"
+    offline-cache-save-failure: "<red>{player} 的内存数据已修改，但持久化保存失败。请先检查控制台和玩家状态，再决定是否重试。</red>"
     invalid-number: "<red>“{value}”不是有效的有限数值。</red>"
     negative-number: "<red>数值不能为负数。</red>"
     value-usage: "<yellow>用法：/{label} [set|add|reduce] [玩家] [nutrition|fullness|all] [数值]</yellow>"
@@ -160,14 +160,14 @@ command:
     mode:
       online: "在线"
       offline-cache: "离线缓存"
-      offline-file: "离线文件"
+      offline-file: "离线存储"
     outcome:
       applied: "已在内存生效"
       saved: "已保存"
       cache-only: "仅在缓存生效"
 
 data:
-  corrupt-reset: "<yellow>你的 HungerOverhaul 数据文件已经损坏，现已替换为默认数据。</yellow>"
+  corrupt-reset: "<yellow>你的 HungerOverhaul 数据记录已经损坏，现已替换为默认数据。</yellow>"
   load-failure: "<red>无法加载你的 HungerOverhaul 数据，请联系服务器管理员。</red>"
 
 actionbar:

@@ -20,6 +20,7 @@ import basementhost.randomchad.data.StarvationDamageSettings;
 import basementhost.randomchad.data.StatusBarSettings;
 import basementhost.randomchad.data.StatusEffectsConfiguration;
 import basementhost.randomchad.data.StorageSettings;
+import basementhost.randomchad.data.StorageType;
 import basementhost.randomchad.data.VanillaHungerSettings;
 import basementhost.randomchad.data.WorldChangeLifecycleSettings;
 import basementhost.randomchad.lang.LanguageManager;
@@ -48,6 +49,8 @@ import basementhost.randomchad.manager.StarvationDamageManager;
 import basementhost.randomchad.manager.ValueDecayManager;
 import basementhost.randomchad.manager.VanillaHungerManager;
 import basementhost.randomchad.storage.FilePlayerDataStorage;
+import basementhost.randomchad.storage.PlayerDataStorage;
+import basementhost.randomchad.storage.SqlitePlayerDataStorage;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -436,7 +439,10 @@ public final class HungerOverhaul extends JavaPlugin {
 			StorageSettings storageSettings = readStorageSettings(getConfig());
 			playerDataManager = new PlayerDataManager(groupManager);
 			Path playerDataDirectory = getDataFolder().toPath().resolve("data");
-			FilePlayerDataStorage storage = new FilePlayerDataStorage(playerDataDirectory);
+			PlayerDataStorage storage = storageSettings.getType() == StorageType.YAML
+					? new FilePlayerDataStorage(playerDataDirectory)
+					: new SqlitePlayerDataStorage(getDataFolder().toPath().resolve("data.db"), playerDataDirectory,
+							storageSettings.isMigrateYamlOnStartup(), getLogger());
 			persistenceManager = new PlayerDataPersistenceManager(
 					this,
 					playerDataManager,
@@ -658,9 +664,16 @@ public final class HungerOverhaul extends JavaPlugin {
 		boolean autosaveEnabled = readBooleanSetting(configuration, "storage.autosave.enabled", true);
 		long autosaveInterval = readLongSetting(configuration, "storage.autosave.interval-seconds", 300L);
 		long cacheTtl = readLongSetting(configuration, "storage.cache-ttl-seconds", 300L);
+		String configuredType = readStringSetting(configuration, "storage.type", "yaml");
+		boolean migrateYaml = readBooleanSetting(configuration, "storage.sqlite.migrate-yaml-on-startup", true);
 
 		try {
-			return new StorageSettings(autosaveEnabled, autosaveInterval, cacheTtl);
+			StorageSettings settings = new StorageSettings(autosaveEnabled, autosaveInterval, cacheTtl,
+					StorageType.fromConfigValue(configuredType), migrateYaml);
+			if (persistenceManager != null) {
+				persistenceManager.validateReloadSettings(settings);
+			}
+			return settings;
 		} catch (IllegalArgumentException exception) {
 			throw new IllegalStateException("Invalid storage settings: " + exception.getMessage(), exception);
 		}

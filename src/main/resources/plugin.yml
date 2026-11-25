@@ -5,6 +5,9 @@ api-version: '26.3'
 description: Replaces Minecraft's vanilla hunger mechanics with fullness and nutrition systems
 author: Random_Chad
 softdepend: [PlaceholderAPI, CraftEngine]
+# Paper downloads this driver from Maven Central on first startup; no shading is needed.
+libraries:
+  - org.xerial:sqlite-jdbc:3.54.1.0
 commands:
   hunger:
     description: Shows HungerOverhaul information, player status and food rules, changes player data, or reloads settings

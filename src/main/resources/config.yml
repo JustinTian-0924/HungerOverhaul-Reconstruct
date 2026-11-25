@@ -18,10 +18,23 @@ performance:
   # Cache translated nutrition/fullness range names; successful reloads clear these names.
   cache-placeholder-status-names: true
 
-# Player files are stored in plugins/HungerOverhaul/data/<uuid>.yml.
+# YAML files are stored in plugins/HungerOverhaul/data/<uuid>.yml.
+# SQLite records are stored in plugins/HungerOverhaul/data.db, for this server only.
+# SQLite does not update old YAML files; switching back to yaml reads those old files.
+# SQLite-to-YAML export and cross-server sharing are not supported in this stage.
+# Stop the server before backing up the plugin folder. Do not delete live -wal/-shm files.
 # Cached data is saved on quit and removed only from memory after the TTL.
-# Player files on disk are never deleted automatically.
+# Stored records and original YAML files are never deleted automatically.
 storage:
+  # yaml (default) or sqlite. Changing this requires a full server restart, not /hunger reload.
+  type: yaml
+  sqlite:
+    # On the first SQLite startup with this option enabled, import existing UUID YAML files.
+    # One transaction; existing database UUIDs win and their YAML sources are skipped.
+    # A corrupt source that still needs importing aborts the whole import.
+    # Original files are untouched. A successful-import marker prevents future stale reimports.
+    # Changing this option also requires a restart. False starts SQLite without importing YAML.
+    migrate-yaml-on-startup: true
   autosave:
     enabled: true
     interval-seconds: 300

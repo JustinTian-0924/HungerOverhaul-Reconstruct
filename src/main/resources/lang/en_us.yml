@@ -80,14 +80,14 @@ command:
     other-loading: "<yellow>{player}'s HungerOverhaul data is still loading. Please try again shortly.</yellow>"
     other-unavailable: "<red>{player}'s HungerOverhaul data is not currently available.</red>"
     offline-loading: "<yellow>Reading {player}'s offline data asynchronously...</yellow>"
-    offline-data-not-found: "<red>Player {player} was found, but no HungerOverhaul data file exists.</red>"
-    offline-data-corrupt: "<red>{player}'s offline data file is corrupt. This read-only query did not change it.</red>"
-    offline-query-failed: "<red>Could not read {player}'s offline data. No player file was changed; check the server console.</red>"
-    offline-default-fallback: "<yellow>This legacy v1 file does not store a group or maximum values. This view uses the default fallback until the player's next normal save upgrades it.</yellow>"
+    offline-data-not-found: "<red>Player {player} was found, but no HungerOverhaul data exists in the current storage.</red>"
+    offline-data-corrupt: "<red>{player}'s offline data record is corrupt. This read-only query did not change it.</red>"
+    offline-query-failed: "<red>Could not read {player}'s offline data. No player data was changed; check the server console.</red>"
+    offline-default-fallback: "<yellow>This legacy v1 record does not store a group or maximum values. This view uses the default fallback until the player's next normal save upgrades it.</yellow>"
     offline-group-snapshot: "<gray>The group and maximum values come from the player's last saved snapshot.</gray>"
     offline-group-missing-fallback: "<yellow>Saved group {group} no longer exists. Base values still use the saved maximums, while group-rule estimates use the default fallback.</yellow>"
     offline-last-seen: "<gray>Data recorded at: <white>{timestamp}</white></gray>"
-    offline-detail-note: "<yellow>The following range effects and regeneration values are estimates based on the offline file and current group rules, not live attributes.</yellow>"
+    offline-detail-note: "<yellow>The following range effects and regeneration values are estimates based on the offline record and current group rules, not live attributes.</yellow>"
     offline-eating-unavailable: "<gray>Eating, digestion cooldown, and message silence: <yellow>live state unavailable while offline</yellow></gray>"
     group: "<gray>Group: <white>{group}</white></gray>"
     nutrition: "<gray>Nutrition: <white>{current}/{maximum}</white> <dark_gray>({percentage}%)</dark_gray></gray>"
@@ -135,8 +135,8 @@ command:
     loading: "<yellow>{player}'s HungerOverhaul data is still loading. Please try again shortly.</yellow>"
     unavailable: "<red>{player}'s HungerOverhaul data is not currently available.</red>"
     offline-loading: "<yellow>Reading and preparing to modify {player}'s offline data asynchronously...</yellow>"
-    offline-data-not-found: "<red>Player {player} was found, but no HungerOverhaul data file exists. No file was created.</red>"
-    offline-data-corrupt: "<red>{player}'s offline data file is corrupt. This update did not overwrite it.</red>"
+    offline-data-not-found: "<red>Player {player} was found, but no HungerOverhaul data exists in the current storage. No record was created.</red>"
+    offline-data-corrupt: "<red>{player}'s offline data record is corrupt. This update did not overwrite it.</red>"
     offline-read-failure: "<red>Could not read {player}'s offline data. No update was applied; check the server console.</red>"
     offline-save-failure: "<red>Could not confirm that {player}'s offline data was saved. Check the server console.</red>"
     offline-cache-save-failure: "<red>{player}'s data changed in memory, but saving failed. Check the console and player status before retrying.</red>"
@@ -160,14 +160,14 @@ command:
     mode:
       online: "online"
       offline-cache: "offline cache"
-      offline-file: "offline file"
+      offline-file: "offline storage"
     outcome:
       applied: "applied in memory"
       saved: "saved"
       cache-only: "applied to cache only"
 
 data:
-  corrupt-reset: "<yellow>Your HungerOverhaul data file was damaged and has been replaced with default data.</yellow>"
+  corrupt-reset: "<yellow>Your HungerOverhaul data record was damaged and has been replaced with default data.</yellow>"
   load-failure: "<red>Your HungerOverhaul data could not be loaded. Please contact a server administrator.</red>"
 
 actionbar:

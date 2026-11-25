@@ -30,7 +30,7 @@ import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
 import java.util.logging.Level;
 
-// Coordinates asynchronous file access, autosaves, and offline memory expiration.
+// Coordinates serial asynchronous storage access, autosaves, and offline memory expiration.
 public final class PlayerDataPersistenceManager {
 	private static final long TICKS_PER_SECOND = 20L;
 	private static final long SHUTDOWN_WAIT_SECONDS = 10L;
@@ -49,7 +49,7 @@ public final class PlayerDataPersistenceManager {
 	private StorageSettings settings;
 	private BukkitTask autosaveTask;
 	private boolean started;
-	private boolean stopping;
+	private volatile boolean stopping;
 
 	public PlayerDataPersistenceManager(
 			HungerOverhaul plugin,
@@ -66,7 +66,13 @@ public final class PlayerDataPersistenceManager {
 				plugin.getLogger()
 		);
 		this.storageExecutor = Executors.newSingleThreadExecutor(task -> {
-			Thread storageThread = new Thread(task, "HungerOverhaul-PlayerData");
+			Thread storageThread = new Thread(() -> {
+				try {
+					task.run();
+				} finally {
+					closeStorage();
+				}
+			}, "HungerOverhaul-PlayerData");
 			storageThread.setDaemon(true);
 			return storageThread;
 		});
@@ -82,6 +88,8 @@ public final class PlayerDataPersistenceManager {
 		}
 
 		started = true;
+		// FIFO ordering makes initialization/migration finish before any player load or save.
+		storageExecutor.execute(this::initializeStorage);
 		scheduleAutosave();
 		for (Player player : plugin.getServer().getOnlinePlayers()) {
 			loadPlayerData(player);
@@ -89,6 +97,7 @@ public final class PlayerDataPersistenceManager {
 	}
 
 	public void updateSettings(StorageSettings settings) {
+		validateReloadSettings(settings);
 		this.settings = Objects.requireNonNull(settings, "settings");
 		if (!started || stopping) {
 			return;
@@ -96,6 +105,31 @@ public final class PlayerDataPersistenceManager {
 
 		scheduleAutosave();
 		rescheduleOfflineUnloads();
+	}
+
+	public void validateReloadSettings(StorageSettings candidate) {
+		if (candidate.getType() != settings.getType()
+				|| candidate.isMigrateYamlOnStartup() != settings.isMigrateYamlOnStartup()) {
+			throw new IllegalStateException("Changing storage.type or storage.sqlite.migrate-yaml-on-startup requires a full server restart. Active storage was kept.");
+		}
+	}
+
+	private void initializeStorage() {
+		try {
+			storage.initialize();
+			plugin.getLogger().info("Player data storage is ready: " + settings.getType().name().toLowerCase(java.util.Locale.ROOT));
+		} catch (PlayerDataStorageException | RuntimeException | LinkageError exception) {
+			plugin.getLogger().log(Level.SEVERE, "Could not initialize player data storage. No fallback backend will be used. HungerOverhaul will be disabled.", exception);
+			runOnServerThread(() -> plugin.getServer().getPluginManager().disablePlugin(plugin));
+		}
+	}
+
+	private void closeStorage() {
+		try {
+			storage.close();
+		} catch (PlayerDataStorageException | RuntimeException | LinkageError exception) {
+			plugin.getLogger().log(Level.SEVERE, "Could not close player data storage cleanly.", exception);
+		}
 	}
 
 	public void loadPlayerData(Player player) {
@@ -306,6 +340,7 @@ public final class PlayerDataPersistenceManager {
 			submitFinalSave(entry.getKey(), entry.getValue());
 		}
 
+		storageExecutor.execute(this::closeStorage);
 		storageExecutor.shutdown();
 		waitForStorageShutdown();
 		loadingPlayerIds.clear();
