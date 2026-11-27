@@ -495,17 +495,14 @@ public final class HungerOverhaulCommand implements CommandExecutor, TabComplete
 			return;
 		}
 
-		HealthRegenerationGroupSettings groupSettings = plugin.getGroupManager()
-				.getSettings(player)
-				.getHealthRegenerationSettings();
-		double regenerationMultiplier = regenerationManager.getRegenerationMultiplier(playerData);
-		double adjustedHeal = regenerationManager.getAdjustedHealHpPerCycle(player, playerData);
+		HealthRegenerationManager.RegenerationCycle cycle = regenerationManager.previewCycle(player, playerData);
+		HealthRegenerationGroupSettings groupSettings = cycle.group();
 		recipient.sendMessage(languageManager.getMessage(
 				"command.status.health-regeneration",
 				Map.of(
 						"base", formatValue(groupSettings.getHealHpPerCycle()),
-						"adjusted", formatValue(adjustedHeal),
-						"multiplier", formatMultiplier(regenerationMultiplier),
+						"adjusted", formatValue(cycle.healHp()),
+						"multiplier", formatMultiplier(cycle.multiplier()),
 						"interval", regenerationManager.getSettings().getIntervalTicks()
 				)
 		));

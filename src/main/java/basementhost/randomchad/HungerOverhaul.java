@@ -9,6 +9,7 @@ import basementhost.randomchad.data.EatingFeedbackSettings;
 import basementhost.randomchad.data.EatingInterruptSettings;
 import basementhost.randomchad.data.FoodOverflowPolicy;
 import basementhost.randomchad.data.HealthRegenerationSettings;
+import basementhost.randomchad.data.HungerEffectSettings;
 import basementhost.randomchad.data.LifecycleValueMode;
 import basementhost.randomchad.data.LifecycleValueRule;
 import basementhost.randomchad.data.LowValueWarningSettings;
@@ -39,6 +40,7 @@ import basementhost.randomchad.manager.FoodConsumptionManager;
 import basementhost.randomchad.manager.FoodManager;
 import basementhost.randomchad.manager.GroupManager;
 import basementhost.randomchad.manager.HealthRegenerationManager;
+import basementhost.randomchad.manager.HungerEffectManager;
 import basementhost.randomchad.manager.LowValueWarningManager;
 import basementhost.randomchad.manager.PlayerDataManager;
 import basementhost.randomchad.manager.PlayerDataPersistenceManager;
@@ -77,6 +79,7 @@ public final class HungerOverhaul extends JavaPlugin {
 	private PlayerDataManager playerDataManager;
 	private PlayerDataPersistenceManager persistenceManager;
 	private VanillaHungerManager vanillaHungerManager;
+	private HungerEffectManager hungerEffectManager;
 	private ValueDecayManager valueDecayManager;
 	private ActionDecayManager actionDecayManager;
 	private LowValueWarningManager lowValueWarningManager;
@@ -309,6 +312,7 @@ public final class HungerOverhaul extends JavaPlugin {
 					readStringSetting(configuration, "language", "en_us"),
 					readStorageSettings(configuration),
 					readVanillaHungerSettings(configuration),
+					readHungerEffectSettings(configuration),
 					readDecaySettings(configuration),
 					readLowValueWarningSettings(configuration),
 					readStarvationDamageSettings(configuration),
@@ -336,6 +340,7 @@ public final class HungerOverhaul extends JavaPlugin {
 		persistenceManager.updateSettings(main.storage());
 		refreshOnlinePlayerGroups();
 		vanillaHungerManager.updateSettings(main.vanillaHunger());
+		hungerEffectManager.updateSettings(main.hungerEffect());
 		valueDecayManager.updateSettings(main.decay());
 		actionDecayManager.updateSettings(main.decay());
 		lowValueWarningManager.updateSettings(main.lowValueWarnings());
@@ -538,9 +543,10 @@ public final class HungerOverhaul extends JavaPlugin {
 	private boolean startVanillaHungerSystem() {
 		try {
 			VanillaHungerSettings settings = readVanillaHungerSettings(getConfig());
+			hungerEffectManager = new HungerEffectManager(playerDataManager, readHungerEffectSettings(getConfig()));
 			vanillaHungerManager = new VanillaHungerManager(this, playerDataManager, settings, onlinePlayerRoster);
 			getServer().getPluginManager().registerEvents(
-					new VanillaHungerListener(vanillaHungerManager),
+					new VanillaHungerListener(vanillaHungerManager, hungerEffectManager),
 					this
 			);
 			vanillaHungerManager.start();
@@ -655,6 +661,7 @@ public final class HungerOverhaul extends JavaPlugin {
 					groupManager,
 					playerDataManager,
 					statusEffectManager,
+					hungerEffectManager,
 					settings
 			);
 			healthRegenerationManager.start();
@@ -766,6 +773,20 @@ public final class HungerOverhaul extends JavaPlugin {
 			);
 		} catch (IllegalArgumentException exception) {
 			throw new IllegalStateException("Invalid starvation damage settings: " + exception.getMessage(), exception);
+		}
+	}
+
+	private HungerEffectSettings readHungerEffectSettings(FileConfiguration configuration) {
+		HungerEffectSettings defaults = HungerEffectSettings.DEFAULT;
+		try {
+			return new HungerEffectSettings(
+					readBooleanSetting(configuration, "hunger-effect.enabled", defaults.enabled()),
+					readDoubleSetting(configuration, "hunger-effect.fullness-loss-per-second-per-level", defaults.fullnessLossPerSecondPerLevel()),
+					readDoubleSetting(configuration, "hunger-effect.nutrition-loss-per-second-per-level", defaults.nutritionLossPerSecondPerLevel()),
+					readDoubleSetting(configuration, "hunger-effect.health-regeneration-multiplier", defaults.healthRegenerationMultiplier())
+			);
+		} catch (IllegalArgumentException exception) {
+			throw new IllegalStateException(exception.getMessage(), exception);
 		}
 	}
 
@@ -1129,6 +1150,7 @@ public final class HungerOverhaul extends JavaPlugin {
 			String language,
 			StorageSettings storage,
 			VanillaHungerSettings vanillaHunger,
+			HungerEffectSettings hungerEffect,
 			DecaySettings decay,
 			LowValueWarningSettings lowValueWarnings,
 			StarvationDamageSettings starvationDamage,

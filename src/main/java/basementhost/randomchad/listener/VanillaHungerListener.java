@@ -1,5 +1,6 @@
 package basementhost.randomchad.listener;
 
+import basementhost.randomchad.manager.HungerEffectManager;
 import basementhost.randomchad.manager.VanillaHungerManager;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -15,9 +16,11 @@ import java.util.Objects;
 // Prevents vanilla hunger mechanics from changing managed players.
 public final class VanillaHungerListener implements Listener {
 	private final VanillaHungerManager vanillaHungerManager;
+	private final HungerEffectManager hungerEffectManager;
 
-	public VanillaHungerListener(VanillaHungerManager vanillaHungerManager) {
+	public VanillaHungerListener(VanillaHungerManager vanillaHungerManager, HungerEffectManager hungerEffectManager) {
 		this.vanillaHungerManager = Objects.requireNonNull(vanillaHungerManager, "vanillaHungerManager");
+		this.hungerEffectManager = Objects.requireNonNull(hungerEffectManager, "hungerEffectManager");
 	}
 
 	@EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -31,6 +34,9 @@ public final class VanillaHungerListener implements Listener {
 	public void onExhaustion(EntityExhaustionEvent event) {
 		if (event.getEntity() instanceof Player player && vanillaHungerManager.isManaging(player)) {
 			event.setCancelled(true);
+			if (event.getExhaustionReason() == EntityExhaustionEvent.ExhaustionReason.HUNGER_EFFECT) {
+				hungerEffectManager.applyTick(player);
+			}
 		}
 	}
 

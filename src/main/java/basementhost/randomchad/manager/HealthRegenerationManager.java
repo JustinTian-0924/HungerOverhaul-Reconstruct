@@ -21,6 +21,7 @@ public final class HealthRegenerationManager {
 	private final GroupManager groupManager;
 	private final PlayerDataManager playerDataManager;
 	private final StatusEffectManager statusEffectManager;
+	private final HungerEffectManager hungerEffectManager;
 
 	private HealthRegenerationSettings settings;
 	private BukkitTask regenerationTask;
@@ -31,12 +32,14 @@ public final class HealthRegenerationManager {
 			GroupManager groupManager,
 			PlayerDataManager playerDataManager,
 			StatusEffectManager statusEffectManager,
+			HungerEffectManager hungerEffectManager,
 			HealthRegenerationSettings settings
 	) {
 		this.plugin = Objects.requireNonNull(plugin, "plugin");
 		this.groupManager = Objects.requireNonNull(groupManager, "groupManager");
 		this.playerDataManager = Objects.requireNonNull(playerDataManager, "playerDataManager");
 		this.statusEffectManager = Objects.requireNonNull(statusEffectManager, "statusEffectManager");
+		this.hungerEffectManager = Objects.requireNonNull(hungerEffectManager, "hungerEffectManager");
 		this.settings = Objects.requireNonNull(settings, "settings");
 	}
 
@@ -69,8 +72,10 @@ public final class HealthRegenerationManager {
 		return settings;
 	}
 
-	public double getRegenerationMultiplier(PlayerData playerData) {
-		Objects.requireNonNull(playerData, "playerData");
+	private double getRegenerationMultiplier(PlayerData playerData, double hungerMultiplier) {
+		if (hungerMultiplier == 0.0) {
+			return 0.0;
+		}
 		StatusEffectDefinition nutritionEffect = statusEffectManager.getNutritionEffect(
 				playerData.getNutritionPercentage()
 		);
@@ -85,17 +90,19 @@ public final class HealthRegenerationManager {
 			modifier += fullnessEffect.getHealthRegenerationModifier();
 		}
 
-		return Math.max(0.0, modifier);
+		double combined = Math.max(0.0, modifier) * hungerMultiplier;
+		return Double.isFinite(combined) ? combined : Double.MAX_VALUE;
 	}
 
-	public double getAdjustedHealHpPerCycle(Player player, PlayerData playerData) {
-		Objects.requireNonNull(player, "player");
-		Objects.requireNonNull(playerData, "playerData");
-		double baseHeal = groupManager.getSettings(player)
-				.getHealthRegenerationSettings()
-				.getHealHpPerCycle();
-		double adjustedHeal = baseHeal * getRegenerationMultiplier(playerData);
-		return Double.isFinite(adjustedHeal) ? adjustedHeal : Double.MAX_VALUE;
+	public RegenerationCycle previewCycle(Player player, PlayerData playerData) {
+		return calculateCycle(player, playerData, hungerEffectManager.getRegenerationMultiplier(player));
+	}
+
+	private RegenerationCycle calculateCycle(Player player, PlayerData playerData, double hungerMultiplier) {
+		HealthRegenerationGroupSettings group = groupManager.getSettings(player).getHealthRegenerationSettings();
+		double multiplier = getRegenerationMultiplier(playerData, hungerMultiplier);
+		double adjustedHeal = group.getHealHpPerCycle() * multiplier;
+		return new RegenerationCycle(group, multiplier, Double.isFinite(adjustedHeal) ? adjustedHeal : Double.MAX_VALUE);
 	}
 
 	private void scheduleRegenerationTask() {
@@ -149,13 +156,18 @@ public final class HealthRegenerationManager {
 			return;
 		}
 
-		double actualHeal = Math.min(getAdjustedHealHpPerCycle(player, playerData), missingHealth);
+		double hungerMultiplier = hungerEffectManager.getRegenerationMultiplier(player);
+		if (hungerMultiplier == 0.0) {
+			return;
+		}
+
+		RegenerationCycle cycle = calculateCycle(player, playerData, hungerMultiplier);
+		double actualHeal = Math.min(cycle.healHp(), missingHealth);
 		if (actualHeal <= HEALTH_EPSILON) {
 			return;
 		}
 
-		HealthRegenerationGroupSettings groupSettings = groupManager.getSettings(player)
-				.getHealthRegenerationSettings();
+		HealthRegenerationGroupSettings groupSettings = cycle.group();
 		if (actualHeal >= settings.getMinimumChargedHealHp()
 				&& !canPayRegenerationCost(playerData, groupSettings)) {
 			return;
@@ -196,5 +208,8 @@ public final class HealthRegenerationManager {
 
 	private boolean isAffectedGameMode(GameMode gameMode) {
 		return gameMode == GameMode.SURVIVAL || gameMode == GameMode.ADVENTURE;
+	}
+
+	public record RegenerationCycle(HealthRegenerationGroupSettings group, double multiplier, double healHp) {
 	}
 }

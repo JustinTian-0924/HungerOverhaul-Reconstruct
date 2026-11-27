@@ -167,6 +167,20 @@ health-regeneration:
   # Actual healing below this amount is free. An equal amount is charged.
   minimum-charged-heal-hp: 0.5
 
+# Replaces the Hunger status effect (e.g. from rotten flesh) for managed survival/adventure players.
+# This is additional to passive decay, independent of group/movement/range multipliers, and respects freezes.
+# Losses apply only while Hunger actually ticks. A second is 20 game ticks.
+# If another plugin cancels a Hunger exhaustion event before this listener, that loss is skipped.
+hunger-effect:
+  enabled: true
+  # Points per second for Hunger I. Hunger II doubles these amounts. Zero disables that loss.
+  fullness-loss-per-second-per-level: 10.0
+  nutrition-loss-per-second-per-level: 5.0
+  # Multiplies this plugin's healing after the normal nutrition/fullness modifiers.
+  # 0 = no healing or healing costs, 0.5 = half healing, 1 = unaffected. Same at all Hunger levels.
+  # Does not change vanilla regeneration settings, healing potions, or other plugins.
+  health-regeneration-multiplier: 0.5
+
 # The vanilla hunger bar is used only as a visual display.
 # source accepts fullness or nutrition.
 # Food levels are whole numbers from 0 to 20.
