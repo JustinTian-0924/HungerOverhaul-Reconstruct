@@ -28,6 +28,7 @@ import basementhost.randomchad.listener.ActionDecayListener;
 import basementhost.randomchad.listener.CakeListener;
 import basementhost.randomchad.listener.EatingInterruptListener;
 import basementhost.randomchad.listener.FoodListener;
+import basementhost.randomchad.listener.OnlinePlayerRoster;
 import basementhost.randomchad.listener.PlayerDataListener;
 import basementhost.randomchad.listener.PlayerLifecycleListener;
 import basementhost.randomchad.listener.StatusEffectListener;
@@ -86,6 +87,7 @@ public final class HungerOverhaul extends JavaPlugin {
 	private StatusBarManager statusBarManager;
 	private PlayerLifecycleManager playerLifecycleManager;
 	private PlaceholderApiHook placeholderApiHook;
+	private OnlinePlayerRoster onlinePlayerRoster;
 	private PerformanceSettings performanceSettings = PerformanceSettings.DEFAULT;
 
 	@Override
@@ -186,6 +188,10 @@ public final class HungerOverhaul extends JavaPlugin {
 
 		if (vanillaHungerManager != null) {
 			vanillaHungerManager.shutdown();
+		}
+
+		if (onlinePlayerRoster != null) {
+			onlinePlayerRoster.setEnabled(false);
 		}
 
 		if (persistenceManager != null) {
@@ -325,6 +331,7 @@ public final class HungerOverhaul extends JavaPlugin {
 		foodManager.applyConfiguration(prepared.foods());
 		languageManager.applyConfiguration(prepared.language());
 		performanceSettings = main.performance();
+		onlinePlayerRoster.setEnabled(performanceSettings.cacheOnlinePlayerRoster());
 
 		persistenceManager.updateSettings(main.storage());
 		refreshOnlinePlayerGroups();
@@ -367,7 +374,7 @@ public final class HungerOverhaul extends JavaPlugin {
 		}
 
 		try {
-			placeholderApiHook = new PlaceholderApiHook(this, performanceSettings);
+			placeholderApiHook = new PlaceholderApiHook(this, performanceSettings, onlinePlayerRoster);
 			placeholderApiHook.start();
 		} catch (RuntimeException | LinkageError exception) {
 			getLogger().log(Level.WARNING, "Could not enable the optional PlaceholderAPI integration.", exception);
@@ -468,7 +475,10 @@ public final class HungerOverhaul extends JavaPlugin {
 			performanceSettings = readPerformanceSettings(getConfig());
 			EatingSettings settings = readEatingSettings(getConfig());
 			StatusBarSettings statusBarSettings = readStatusBarSettings(getConfig());
-			statusBarManager = new StatusBarManager(this, playerDataManager);
+			onlinePlayerRoster = new OnlinePlayerRoster(getServer());
+			onlinePlayerRoster.setEnabled(performanceSettings.cacheOnlinePlayerRoster());
+			getServer().getPluginManager().registerEvents(onlinePlayerRoster, this);
+			statusBarManager = new StatusBarManager(this, playerDataManager, onlinePlayerRoster);
 			eatingManager = new EatingManager(this, groupManager, playerDataManager, statusBarManager, settings);
 			eatingManager.updatePerformanceSettings(performanceSettings);
 			FoodConsumptionManager foodConsumptionManager = new FoodConsumptionManager(this, eatingManager);
@@ -528,7 +538,7 @@ public final class HungerOverhaul extends JavaPlugin {
 	private boolean startVanillaHungerSystem() {
 		try {
 			VanillaHungerSettings settings = readVanillaHungerSettings(getConfig());
-			vanillaHungerManager = new VanillaHungerManager(this, playerDataManager, settings);
+			vanillaHungerManager = new VanillaHungerManager(this, playerDataManager, settings, onlinePlayerRoster);
 			getServer().getPluginManager().registerEvents(
 					new VanillaHungerListener(vanillaHungerManager),
 					this
@@ -858,7 +868,8 @@ public final class HungerOverhaul extends JavaPlugin {
 				readBooleanSetting(configuration, "performance.skip-idle-eating-checks", true),
 				readBooleanSetting(configuration, "performance.cache-statusbar-messages", true),
 				readBooleanSetting(configuration, "performance.reuse-placeholder-snapshots", true),
-				readBooleanSetting(configuration, "performance.cache-placeholder-status-names", true)
+				readBooleanSetting(configuration, "performance.cache-placeholder-status-names", true),
+				readBooleanSetting(configuration, "performance.cache-online-player-roster", true)
 		);
 	}
 

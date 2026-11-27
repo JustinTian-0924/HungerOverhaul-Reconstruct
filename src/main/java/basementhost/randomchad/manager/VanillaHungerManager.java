@@ -3,6 +3,7 @@ package basementhost.randomchad.manager;
 import basementhost.randomchad.HungerOverhaul;
 import basementhost.randomchad.data.PlayerData;
 import basementhost.randomchad.data.VanillaHungerSettings;
+import basementhost.randomchad.listener.OnlinePlayerRoster;
 import org.bukkit.damage.DamageSource;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
@@ -11,11 +12,14 @@ import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 // Uses the vanilla hunger bar only as a display for HungerOverhaul data.
 public final class VanillaHungerManager {
 	private final HungerOverhaul plugin;
 	private final PlayerDataManager playerDataManager;
+	private final OnlinePlayerRoster onlinePlayerRoster;
+	private final Consumer<Player> playerUpdater = this::updatePlayer;
 	private final Set<UUID> allowedPluginStarvationDamage = new HashSet<>();
 
 	private VanillaHungerSettings settings;
@@ -25,11 +29,13 @@ public final class VanillaHungerManager {
 	public VanillaHungerManager(
 			HungerOverhaul plugin,
 			PlayerDataManager playerDataManager,
-			VanillaHungerSettings settings
+			VanillaHungerSettings settings,
+			OnlinePlayerRoster onlinePlayerRoster
 	) {
 		this.plugin = Objects.requireNonNull(plugin, "plugin");
 		this.playerDataManager = Objects.requireNonNull(playerDataManager, "playerDataManager");
 		this.settings = Objects.requireNonNull(settings, "settings");
+		this.onlinePlayerRoster = Objects.requireNonNull(onlinePlayerRoster, "onlinePlayerRoster");
 	}
 
 	public void start() {
@@ -103,9 +109,7 @@ public final class VanillaHungerManager {
 	}
 
 	private void updateOnlinePlayers() {
-		for (Player player : plugin.getServer().getOnlinePlayers()) {
-			updatePlayer(player);
-		}
+		onlinePlayerRoster.forEachOnlinePlayer(playerUpdater);
 	}
 
 	private void updatePlayer(Player player) {

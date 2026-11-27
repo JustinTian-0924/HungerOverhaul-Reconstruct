@@ -5,6 +5,7 @@ import basementhost.randomchad.data.PlayerData;
 import basementhost.randomchad.data.PerformanceSettings;
 import basementhost.randomchad.data.StatusEffectDefinition;
 import basementhost.randomchad.lang.LanguageManager;
+import basementhost.randomchad.listener.OnlinePlayerRoster;
 import basementhost.randomchad.manager.StatusEffectManager;
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 import org.bukkit.OfflinePlayer;
@@ -41,6 +42,7 @@ public final class PlaceholderApiHook implements Listener {
 	);
 
 	private final HungerOverhaul plugin;
+	private final OnlinePlayerRoster onlinePlayerRoster;
 	private final Map<UUID, PlayerSnapshot> snapshots = new ConcurrentHashMap<>();
 	private final Expansion expansion;
 	private final Map<StatusNameKey, String> statusNames = new HashMap<>();
@@ -48,9 +50,10 @@ public final class PlaceholderApiHook implements Listener {
 	private BukkitTask snapshotTask;
 	private boolean registered;
 
-	public PlaceholderApiHook(HungerOverhaul plugin, PerformanceSettings performanceSettings) {
+	public PlaceholderApiHook(HungerOverhaul plugin, PerformanceSettings performanceSettings, OnlinePlayerRoster onlinePlayerRoster) {
 		this.plugin = plugin;
 		this.performanceSettings = Objects.requireNonNull(performanceSettings, "performanceSettings");
+		this.onlinePlayerRoster = Objects.requireNonNull(onlinePlayerRoster, "onlinePlayerRoster");
 		this.expansion = new Expansion();
 	}
 
@@ -104,34 +107,37 @@ public final class PlaceholderApiHook implements Listener {
 	private void publishSnapshots(boolean force) {
 		StatusEffectManager statusEffectManager = plugin.getStatusEffectManager();
 		LanguageManager languageManager = plugin.getLanguageManager();
-		for (Player player : plugin.getServer().getOnlinePlayers()) {
-			UUID playerId = player.getUniqueId();
-			PlayerData playerData = plugin.getPlayerDataManager().findPlayerData(playerId).orElse(null);
-			if (playerData == null || plugin.getPersistenceManager().isPlayerDataLoading(playerId)) {
-				snapshots.remove(playerId);
-				continue;
-			}
+		boolean reuse = !force && performanceSettings.reusePlaceholderSnapshots();
+		onlinePlayerRoster.forEachOnlinePlayer(player -> publishSnapshot(player, statusEffectManager, languageManager, reuse));
+	}
 
-			if (!force && performanceSettings.reusePlaceholderSnapshots()) {
-				PlayerSnapshot previous = snapshots.get(playerId);
-				if (previous != null && previous.matches(playerData)) {
-					continue;
-				}
-			}
-
-			double nutritionPercentage = playerData.getNutritionPercentage();
-			double fullnessPercentage = playerData.getFullnessPercentage();
-			snapshots.put(playerId, new PlayerSnapshot(
-					playerData.getNutrition(),
-					playerData.getFullness(),
-					playerData.getMaxNutrition(),
-					playerData.getMaxFullness(),
-					nutritionPercentage,
-					fullnessPercentage,
-					getStatusName(languageManager, "nutrition", statusEffectManager.getNutritionEffect(nutritionPercentage)),
-					getStatusName(languageManager, "fullness", statusEffectManager.getFullnessEffect(fullnessPercentage))
-			));
+	private void publishSnapshot(Player player, StatusEffectManager statusEffectManager, LanguageManager languageManager, boolean reuse) {
+		UUID playerId = player.getUniqueId();
+		PlayerData playerData = plugin.getPlayerDataManager().findPlayerData(playerId).orElse(null);
+		if (playerData == null || plugin.getPersistenceManager().isPlayerDataLoading(playerId)) {
+			snapshots.remove(playerId);
+			return;
 		}
+
+		if (reuse) {
+			PlayerSnapshot previous = snapshots.get(playerId);
+			if (previous != null && previous.matches(playerData)) {
+				return;
+			}
+		}
+
+		double nutritionPercentage = playerData.getNutritionPercentage();
+		double fullnessPercentage = playerData.getFullnessPercentage();
+		snapshots.put(playerId, new PlayerSnapshot(
+				playerData.getNutrition(),
+				playerData.getFullness(),
+				playerData.getMaxNutrition(),
+				playerData.getMaxFullness(),
+				nutritionPercentage,
+				fullnessPercentage,
+				getStatusName(languageManager, "nutrition", statusEffectManager.getNutritionEffect(nutritionPercentage)),
+				getStatusName(languageManager, "fullness", statusEffectManager.getFullnessEffect(fullnessPercentage))
+		));
 	}
 
 	private String getStatusName(LanguageManager languageManager, String type, StatusEffectDefinition effect) {

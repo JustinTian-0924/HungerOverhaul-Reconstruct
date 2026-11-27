@@ -5,7 +5,8 @@ public record PerformanceSettings(
 		boolean skipIdleEatingChecks,
 		boolean cacheStatusbarMessages,
 		boolean reusePlaceholderSnapshots,
-		boolean cachePlaceholderStatusNames
+		boolean cachePlaceholderStatusNames,
+		boolean cacheOnlinePlayerRoster
 ) {
-	public static final PerformanceSettings DEFAULT = new PerformanceSettings(true, true, true, true);
+	public static final PerformanceSettings DEFAULT = new PerformanceSettings(true, true, true, true, true);
 }

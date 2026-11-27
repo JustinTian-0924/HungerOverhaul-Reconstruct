@@ -3,6 +3,7 @@ package basementhost.randomchad.manager;
 import basementhost.randomchad.HungerOverhaul;
 import basementhost.randomchad.data.PlayerData;
 import basementhost.randomchad.data.StatusBarSettings;
+import basementhost.randomchad.listener.OnlinePlayerRoster;
 import basementhost.randomchad.util.StatusBarMessageCache;
 import net.kyori.adventure.text.Component;
 import org.bukkit.entity.Player;
@@ -19,6 +20,7 @@ import java.util.function.Function;
 public final class StatusBarManager {
 	private final HungerOverhaul plugin;
 	private final PlayerDataManager playerDataManager;
+	private final OnlinePlayerRoster onlinePlayerRoster;
 	private final Set<UUID> showingStatus = new HashSet<>();
 	private final Map<UUID, Integer> resultHoldUntil = new HashMap<>();
 	private final StatusBarMessageCache messageCache = new StatusBarMessageCache();
@@ -26,9 +28,10 @@ public final class StatusBarManager {
 	private boolean cacheMessages = true;
 	private BukkitTask refreshTask;
 
-	public StatusBarManager(HungerOverhaul plugin, PlayerDataManager playerDataManager) {
+	public StatusBarManager(HungerOverhaul plugin, PlayerDataManager playerDataManager, OnlinePlayerRoster onlinePlayerRoster) {
 		this.plugin = plugin;
 		this.playerDataManager = playerDataManager;
+		this.onlinePlayerRoster = onlinePlayerRoster;
 		this.statusRenderer = values -> plugin.getLanguageManager().getMessage("actionbar.format", values);
 	}
 
@@ -79,24 +82,25 @@ public final class StatusBarManager {
 
 	private void refreshOnlinePlayers() {
 		int currentTick = plugin.getServer().getCurrentTick();
-		for (Player player : plugin.getServer().getOnlinePlayers()) {
-			UUID playerId = player.getUniqueId();
-			if (plugin.getEatingManager().isProgressFeedbackActive(playerId) || hasResultHold(playerId, currentTick)) {
-				continue;
-			}
+		onlinePlayerRoster.forEachOnlinePlayer(player -> refreshPlayer(player, currentTick));
+	}
 
-			PlayerData playerData = playerDataManager.findPlayerData(playerId).orElse(null);
-			if (playerData == null) {
-				messageCache.remove(playerId);
-				continue;
-			}
-
-			Component message = cacheMessages ? messageCache.getOrCreate(playerData, statusRenderer)
-					: statusRenderer.apply(StatusBarMessageCache.formatValues(playerData));
-			// Keep sending on the original schedule so an unchanged bar does not expire.
-			player.sendActionBar(message);
-			showingStatus.add(playerId);
+	private void refreshPlayer(Player player, int currentTick) {
+		UUID playerId = player.getUniqueId();
+		if (plugin.getEatingManager().isProgressFeedbackActive(playerId) || hasResultHold(playerId, currentTick)) {
+			return;
 		}
+		PlayerData playerData = playerDataManager.findPlayerData(playerId).orElse(null);
+		if (playerData == null) {
+			messageCache.remove(playerId);
+			return;
+		}
+
+		Component message = cacheMessages ? messageCache.getOrCreate(playerData, statusRenderer)
+				: statusRenderer.apply(StatusBarMessageCache.formatValues(playerData));
+		// Keep sending on the original schedule so an unchanged bar does not expire.
+		player.sendActionBar(message);
+		showingStatus.add(playerId);
 	}
 
 	private boolean hasResultHold(UUID playerId, int currentTick) {

@@ -17,6 +17,9 @@ performance:
   reuse-placeholder-snapshots: true
   # Cache translated nutrition/fullness range names; successful reloads clear these names.
   cache-placeholder-status-names: true
+  # Share one online-player list for PAPI, the status bar, and vanilla hunger sync.
+  # The list updates on join, quit, and respawn. False uses Paper's live list each pass.
+  cache-online-player-roster: true
 
 # YAML files are stored in plugins/HungerOverhaul/data/<uuid>.yml.
 # SQLite records are stored in plugins/HungerOverhaul/data.db, for this server only.
