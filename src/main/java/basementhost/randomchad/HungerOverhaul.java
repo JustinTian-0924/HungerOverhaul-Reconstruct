@@ -543,7 +543,7 @@ public final class HungerOverhaul extends JavaPlugin {
 	private boolean startVanillaHungerSystem() {
 		try {
 			VanillaHungerSettings settings = readVanillaHungerSettings(getConfig());
-			hungerEffectManager = new HungerEffectManager(playerDataManager, readHungerEffectSettings(getConfig()));
+			hungerEffectManager = new HungerEffectManager(playerDataManager, statusEffectManager, readHungerEffectSettings(getConfig()));
 			vanillaHungerManager = new VanillaHungerManager(this, playerDataManager, settings, onlinePlayerRoster);
 			getServer().getPluginManager().registerEvents(
 					new VanillaHungerListener(vanillaHungerManager, hungerEffectManager),
@@ -782,7 +782,16 @@ public final class HungerOverhaul extends JavaPlugin {
 			return new HungerEffectSettings(
 					readBooleanSetting(configuration, "hunger-effect.enabled", defaults.enabled()),
 					readDoubleSetting(configuration, "hunger-effect.fullness-loss-per-second-per-level", defaults.fullnessLossPerSecondPerLevel()),
+					readDoubleSetting(configuration, "hunger-effect.fullness-percentage-loss-per-second-per-level",
+							defaults.fullnessPercentageLossPerSecondPerLevel()),
+					readBooleanSetting(configuration, "hunger-effect.fullness-scale-with-hunger-level",
+							defaults.fullnessScaleWithHungerLevel()),
 					readDoubleSetting(configuration, "hunger-effect.nutrition-loss-per-second-per-level", defaults.nutritionLossPerSecondPerLevel()),
+					readDoubleSetting(configuration, "hunger-effect.nutrition-percentage-loss-per-second-per-level",
+							defaults.nutritionPercentageLossPerSecondPerLevel()),
+					readBooleanSetting(configuration, "hunger-effect.nutrition-scale-with-hunger-level",
+							defaults.nutritionScaleWithHungerLevel()),
+					readBooleanSetting(configuration, "hunger-effect.apply-status-decay-multiplier", defaults.applyStatusDecayMultiplier()),
 					readDoubleSetting(configuration, "hunger-effect.health-regeneration-multiplier", defaults.healthRegenerationMultiplier())
 			);
 		} catch (IllegalArgumentException exception) {

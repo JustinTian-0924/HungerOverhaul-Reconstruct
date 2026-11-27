@@ -168,14 +168,23 @@ health-regeneration:
   minimum-charged-heal-hp: 0.5
 
 # Replaces the Hunger status effect (e.g. from rotten flesh) for managed survival/adventure players.
-# This is additional to passive decay, independent of group/movement/range multipliers, and respects freezes.
+# This is additional to passive decay, independent of group and movement rates, and respects freezes.
 # Losses apply only while Hunger actually ticks. A second is 20 game ticks.
 # If another plugin cancels a Hunger exhaustion event before this listener, that loss is skipped.
 hunger-effect:
   enabled: true
-  # Points per second for Hunger I. Hunger II doubles these amounts. Zero disables that loss.
+  # Per second: (fixed points + current maximum * fraction), then multiply by Hunger level if enabled.
+  # Fractions range from 0 to 1 (0.002 = 0.2% of the maximum). Set either term to 0 to disable it.
+  # A false level switch keeps that value's drain at the Hunger I rate for all Hunger levels.
   fullness-loss-per-second-per-level: 10.0
+  fullness-percentage-loss-per-second-per-level: 0.0
+  fullness-scale-with-hunger-level: true
   nutrition-loss-per-second-per-level: 5.0
+  nutrition-percentage-loss-per-second-per-level: 0.0
+  nutrition-scale-with-hunger-level: true
+  # Optionally multiply each loss by its current range's decay-multiplier from status-effects.yml.
+  # Missing or disabled range effects use 1.0. This does not change health regeneration.
+  apply-status-decay-multiplier: false
   # Multiplies this plugin's healing after the normal nutrition/fullness modifiers.
   # 0 = no healing or healing costs, 0.5 = half healing, 1 = unaffected. Same at all Hunger levels.
   # Does not change vanilla regeneration settings, healing potions, or other plugins.
